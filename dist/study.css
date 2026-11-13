@@ -276,3 +276,5 @@ dialog p { font-size: 14px; color: var(--muted); margin: 16px 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.explanation-text { white-space: pre-line; overflow-wrap: anywhere; }

@@ -1,9 +1,10 @@
 """Build a dependency-free study site from uploaded Markdown sources."""
 from pathlib import Path
-import re, json, html
+import re, json, html, hashlib
 from html.parser import HTMLParser
 
 ROOT=Path(__file__).resolve().parents[1]
+EXPLANATIONS=json.loads((ROOT/'content/explanations.json').read_text())
 class SafeHTML(HTMLParser):
     def __init__(self): super().__init__(); self.out=[]
     def handle_starttag(self,tag,attrs):
@@ -83,11 +84,16 @@ for f in sorted((ROOT/'sources').glob('2026_*.md')):
         symbols=set(re.findall('[①②③④]',body)); incomplete=not set('①②③④')<=symbols
         topic,unit,note=classify(stem,body,n)
         q={'id':f'2026-{month:02d}-{n:02d}','year':2026,'month':month,'number':n,'subject':'재무회계' if n<=40 else '세무회계','unit':unit,'topic':topic,'format':'계산형' if re.search('얼마|계산하면|계산한',stem) else '개념형','html':render(stem if full else body),'options':[render(o) for o in options],'answer':answers[n],'source':f.name,'answerSource':af.name,'note':note,'incomplete':incomplete,'raw':body}
-        if month==9 and n==72:q['explanation']='①은 틀린 설명입니다. 수출에 영세율을 적용하면 관련 매입세액을 공제받을 수 있고, 공제세액이 매출세액을 초과하면 환급받을 수 있습니다. ② 면세재화의 수출에 영세율을 적용받으려면 법정 요건에 따른 면세포기가 필요합니다. ③ 내국신용장에 의한 재화 공급은 영세율 적용 대상입니다. ④ 영세율은 이전 거래단계의 부가세 부담까지 제거하는 완전면세 효과가 있습니다.'
+        explanation=EXPLANATIONS[q['id']]
+        assert explanation['answer']==answers[n], f"해설과 공식 정답 불일치: {q['id']}"
+        assert explanation['sourceHash']==hashlib.sha256(body.encode()).hexdigest(), f"문제 원문 변경 후 해설 재검토 필요: {q['id']}"
+        assert explanation['text'].strip(), f"해설 누락: {q['id']}"
+        q.update(explanation=explanation['text'], explanationOrigin='학습용 자체 해설', explanationStatus=explanation['status'])
         questions.append(q)
         if incomplete:report.append({'id':q['id'],'issue':'첨부 원문에 ④ 보기 누락 — 학습 기본 제외'})
     print(f'{month}월: 80문항 / 확정답안 80개 연결')
 assert len(questions)==480 and len({q['id'] for q in questions})==480
+assert set(EXPLANATIONS)=={q['id'] for q in questions}, '해설과 문제은행 문항 집합 불일치'
 (ROOT/'dist/questions.json').write_text(json.dumps(questions,ensure_ascii=False))
 (ROOT/'dist/import-report.json').write_text(json.dumps({'total':len(questions),'issues':report},ensure_ascii=False,indent=2))
 print('원문 확인 필요:',report)

@@ -1,9 +1,29 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {grade,due,validateBackup} from '../dist/core.mjs';
 const questions=JSON.parse(readFileSync(new URL('../dist/questions.json',import.meta.url)));
 const ids=new Set(questions.map(q=>q.id));
+test('every source question has an individual explanation tied to its exact source and official answer',()=>{
+ const bank=JSON.parse(readFileSync(new URL('../content/explanations.json',import.meta.url)));
+ assert.equal(Object.keys(bank).length,480);
+ for(const q of questions){
+  const entry=bank[q.id];
+  assert.equal(entry.answer,q.answer);
+  assert.equal(entry.sourceHash,createHash('sha256').update(q.raw).digest('hex'));
+  assert.equal(q.explanation,entry.text);
+  assert.ok(q.explanation.length>=40);
+  assert.notEqual(q.explanation,q.note);
+  assert.equal(q.explanationOrigin,'학습용 자체 해설');
+  assert.equal(q.explanationStatus,q.incomplete?'source_incomplete':'authored');
+ }
+ assert.equal(questions.filter(q=>!q.incomplete&&q.explanation).length,477);
+});
+test('calculation explanations include the result for each exam session',()=>{
+ const results=[['2026-01-10',9500000*.04-(200000-120000)],['2026-03-21',(5000000-500000)/3*6/12],['2026-05-14',30000*(60000/100000)],['2026-06-36',10000000/50000000*100],['2026-07-74',730000000*.031*92/365+3000000],['2026-09-77',(44000000+3300000)*10/110]];
+ for(const[id,value] of results){assert.ok(questions.find(q=>q.id===id).explanation.includes(Math.round(value).toLocaleString('en-US')),id)}
+});
 test('all six original answer sheets match all 480 imported questions',()=>{
  assert.equal(questions.length,480);assert.equal(ids.size,480);
  for(const month of [1,3,5,6,7,9]){
