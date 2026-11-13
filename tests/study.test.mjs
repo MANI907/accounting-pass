@@ -8,7 +8,7 @@ const ids=new Set(questions.map(q=>q.id));
 test('every source question has an individual explanation tied to its exact source and official answer',()=>{
  const bank=JSON.parse(readFileSync(new URL('../content/explanations.json',import.meta.url)));
  assert.equal(Object.keys(bank).length,480);
- for(const q of questions){
+ for(const q of questions.filter(q=>q.year===2026)){
   const entry=bank[q.id];
   assert.equal(entry.answer,q.answer);
   assert.equal(entry.sourceHash,createHash('sha256').update(q.raw).digest('hex'));
@@ -18,14 +18,14 @@ test('every source question has an individual explanation tied to its exact sour
   assert.equal(q.explanationOrigin,'학습용 자체 해설');
   assert.equal(q.explanationStatus,q.incomplete?'source_incomplete':'authored');
  }
- assert.equal(questions.filter(q=>!q.incomplete&&q.explanation).length,477);
+ assert.equal(questions.filter(q=>q.year===2026&&!q.incomplete&&q.explanation).length,477);
 });
 test('calculation explanations include the result for each exam session',()=>{
  const results=[['2026-01-10',9500000*.04-(200000-120000)],['2026-03-21',(5000000-500000)/3*6/12],['2026-05-14',30000*(60000/100000)],['2026-06-36',10000000/50000000*100],['2026-07-74',730000000*.031*92/365+3000000],['2026-09-77',(44000000+3300000)*10/110]];
  for(const[id,value] of results){assert.ok(questions.find(q=>q.id===id).explanation.includes(Math.round(value).toLocaleString('en-US')),id)}
 });
 test('all six original answer sheets match all 480 imported questions',()=>{
- assert.equal(questions.length,480);assert.equal(ids.size,480);
+ assert.equal(questions.filter(q=>q.year===2026).length,480);assert.equal(ids.size,questions.length);
  for(const month of [1,3,5,6,7,9]){
   const name=readdirSync(new URL('../sources/',import.meta.url)).find(s=>s.startsWith(`26년_${month}월_`));
   const raw=readFileSync(new URL('../sources/'+name,import.meta.url),'utf8');
@@ -33,7 +33,7 @@ test('all six original answer sheets match all 480 imported questions',()=>{
   for(const match of raw.matchAll(/^\|\s*(\d+)\s*\|\s*([1-4])\s*\|\s*(\d+)\s*\|\s*([1-4])\s*\|\s*(\d+)\s*\|\s*([1-4])\s*\|\s*(\d+)\s*\|\s*([1-4])\s*\|$/gm))
    for(let i=1;i<=8;i+=2)expected.set(+match[i],+match[i+1]);
   assert.equal(expected.size,80);
-  for(const q of questions.filter(q=>q.month===month)){
+  for(const q of questions.filter(q=>q.year===2026&&q.month===month)){
    assert.equal(q.answer,expected.get(q.number));assert.equal(q.subject,q.number<=40?'재무회계':'세무회계');
    assert.ok(q.html.length>0);assert.ok(q.options.length===0||q.options.length===4);
    assert.ok(!/<script|onerror\s*=|javascript:/i.test(q.html+q.options.join('')));
@@ -41,9 +41,9 @@ test('all six original answer sheets match all 480 imported questions',()=>{
  }
 });
 test('three incomplete originals are preserved but flagged; September 72 has verified answer',()=>{
- assert.deepEqual(questions.filter(q=>q.incomplete).map(q=>q.id).sort(),['2026-09-47','2026-09-50','2026-09-55']);
+ assert.deepEqual(questions.filter(q=>q.year===2026&&q.incomplete).map(q=>q.id).sort(),['2026-09-47','2026-09-50','2026-09-55']);
  assert.equal(questions.find(q=>q.id==='2026-09-72').answer,1);
- assert.equal(questions.filter(q=>!q.incomplete).length,477);
+ assert.equal(questions.filter(q=>q.year===2026&&!q.incomplete).length,477);
 });
 test('wrong and guessed answers enter next-day review, confident correct answers expand intervals',()=>{
  const now=1_800_000_000_000,day=86400000;
@@ -84,4 +84,43 @@ test('notebook import rejects duplicate IDs, invalid timestamps and oversized co
  assert.throws(()=>validateMemos({}));
  const result=validateMemos([memoFixture]);result[0].text='changed';assert.notEqual(result[0].text,memoFixture.text);
  assert.equal(validateMemos([{...memoFixture,text:'<script>alert(1)</script>'}])[0].text,'<script>alert(1)</script>');
+});
+
+test('all thirty sessions retain 80 unique original question IDs and their original-year labels',()=>{
+ assert.equal(questions.length,2400);assert.equal(ids.size,2400);
+ const report=JSON.parse(readFileSync(new URL('../dist/import-report.json',import.meta.url)));
+ assert.equal(report.sessions.length,30);assert.equal(report.available,2393);
+ for(const year of [2023,2024,2025,2026]){
+  const subset=questions.filter(q=>q.year===year);assert.equal(subset.length,year===2026?480:640);
+  for(const month of new Set(subset.map(q=>q.month))){const session=subset.filter(q=>q.month===month);assert.deepEqual(session.map(q=>q.number),Array.from({length:80},(_,i)=>i+1));assert.equal(session[0].id,`${year}-${String(month).padStart(2,'0')}-01`)}
+ }
+ assert.equal(questions.filter(q=>q.incomplete).length,7);
+});
+test('all 2400 official answers match independently extracted HTML, Markdown and text answer sheets',()=>{
+ for(const file of new Set(questions.map(q=>q.answerSource))){
+  const raw=readFileSync(new URL('../sources/'+file,import.meta.url),'utf8').replaceAll('[','').replaceAll(']','');
+  let rows=[];
+  if(raw.includes('<tr')){
+   for(const row of raw.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)){
+    const cells=[...row[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(m=>m[1].replace(/<[^>]*>/g,'').trim());
+    if(cells.length===8&&cells.every(c=>/^\d+$/.test(c)))rows.push(cells.map(Number));
+   }
+  }else{
+   for(const line of raw.split('\n')){const cells=line.trim().replace(/^\||\|$/g,'').split('|').map(s=>s.trim());if(cells.length===8&&cells.every(s=>/^\d+$/.test(s)))rows.push(cells.map(Number));}
+   if(!rows.length){
+    const after=raw.split('재무회계')[1];assert.ok(after,file);
+    for(const part of after.split('세무회계')){const numbers=(part.replace(/\b[12]\)\s*/g,'').match(/\b\d+\b/g)||[]).map(Number);assert.equal(numbers.length,80,file);for(let i=0;i<80;i+=8)rows.push(numbers.slice(i,i+8));}
+   }
+  }
+  assert.equal(rows.length,20,file);const expected=new Map();
+  rows.forEach((row,index)=>{for(let i=0;i<8;i+=2){const n=row[i]+(index>=10&&Math.max(...row.filter((_,j)=>j%2===0))<=40?40:0);assert.ok(!expected.has(n));expected.set(n,row[i+1]);}});
+  const session=questions.filter(q=>q.answerSource===file);assert.equal(session.length,80,file);
+  for(const q of session)assert.equal(q.answer,expected.get(q.number),q.id);
+ }
+});
+test('new questions without reviewed explanations remain explicitly pending',()=>{
+ for(const q of questions.filter(q=>q.year<2026)){
+  if(!q.explanation){assert.equal(q.explanationStatus,'pending');continue;}
+  assert.equal(q.explanationStatus,'matched');assert.equal(q.subject,'재무회계');assert.ok(ids.has(q.explanationSourceId));
+ }
 });

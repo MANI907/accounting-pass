@@ -40,7 +40,7 @@ TOPICS=[
 ('원천징수','소득세',r'원천징수','예납적 원천징수는 확정신고에서 기납부세액으로 정산하고, 완납적 원천징수는 해당 소득의 납세의무가 종결됩니다.'),
 ('근로·퇴직소득','소득세',r'근로소득|퇴직소득|연말정산','급여 총액과 과세대상 근로소득은 다릅니다. 비과세소득을 제외한 후 근로소득공제, 소득공제, 세액공제를 순서대로 구분하세요.'),
 ('종합소득·소득구분','소득세',r'소득세|종합소득|이자소득|배당소득|사업소득|기타소득|연금소득','소득 종류를 먼저 판정하고 종합과세·분리과세 여부를 확인하세요. 총수입금액, 필요경비, 소득금액을 혼동하지 않는 것이 핵심입니다.'),
-('기업업무추진비·기부금','법인세',r'기업업무추진비|기부금','지출의 성격을 구분한 뒤 손금 한도를 계산합니다. 기업업무추진비는 기본한도와 수입금액 기준 한도, 기부금은 종류별 한도와 이월 규정을 확인하세요.'),
+('기업업무추진비·기부금','법인세',r'기업업무추진비|접대비|기부금','지출의 성격을 구분한 뒤 손금 한도를 계산합니다. 기업업무추진비는 기본한도와 수입금액 기준 한도, 기부금은 종류별 한도와 이월 규정을 확인하세요.'),
 ('세무조정·소득처분','법인세',r'세무조정|소득처분|유보|손금불산입|익금불산입','회계상 당기순이익에서 익금산입·손금불산입을 더하고 손금산입·익금불산입을 뺍니다. 사외유출 여부와 귀속자를 확인해 소득처분을 판단하세요.'),
 ('법인세 계산·신고','법인세',r'법인세|사업연도|손금|익금','각 사업연도 소득금액에서 이월결손금·비과세소득·소득공제를 차감해 과세표준을 구합니다. 제공된 출제연도 세율과 사업연도 조건을 사용하세요.'),
 ('현금흐름표','재무제표',r'현금흐름','영업·투자·재무활동을 구분하고 비현금거래를 제외하세요. 간접법에서는 비현금손익과 영업 관련 자산·부채 변동을 조정합니다.'),
@@ -62,38 +62,112 @@ def classify(stem,body,num):
         if re.search(pattern,body):return name,unit,note
     return '세법 기초','조세총론','납세의무자, 과세대상, 과세기간과 신고·납부 절차를 구분해 정리하세요.'
 
-questions=[]; report=[]
-for f in sorted((ROOT/'sources').glob('2026_*.md')):
-    month=int(re.search(r'_(\d+)월',f.name)[1]); af=next((ROOT/'sources').glob(f'26년_{month}월_*'))
-    answers={}
-    for line in af.read_text().splitlines():
-        cells=[c.strip() for c in line.strip().strip('|').split('|')]
-        if len(cells)==8 and all(c.isdigit() for c in cells):
-            for i in range(0,8,2):
-                n,a=map(int,cells[i:i+2]);assert n not in answers;assert 1<=a<=4;answers[n]=a
-    assert set(answers)==set(range(1,81))
-    text=f.read_text(); matches=list(re.finditer(r'【\s*(\d+)\s*】',text))
-    assert [int(m[1]) for m in matches]==list(range(1,81))
-    for i,m in enumerate(matches):
-        n=int(m[1]); body=text[m.end():matches[i+1].start() if i<79 else len(text)].strip()
-        if n==40:body=re.split(r'<\s*세무회계\s*>',body)[0].strip()
-        choices=list(re.finditer(r'^\s*(?:-\s*)?([①②③④])\s*',body,re.M))
-        full=len(choices)==4 and [c[1] for c in choices]==list('①②③④')
-        stem=body[:choices[0].start()].strip() if choices else body
-        options=[body[c.end():choices[j+1].start() if j<3 else len(body)].strip() for j,c in enumerate(choices)] if full else []
-        symbols=set(re.findall('[①②③④]',body)); incomplete=not set('①②③④')<=symbols
-        topic,unit,note=classify(stem,body,n)
-        q={'id':f'2026-{month:02d}-{n:02d}','year':2026,'month':month,'number':n,'subject':'재무회계' if n<=40 else '세무회계','unit':unit,'topic':topic,'format':'계산형' if re.search('얼마|계산하면|계산한',stem) else '개념형','html':render(stem if full else body),'options':[render(o) for o in options],'answer':answers[n],'source':f.name,'answerSource':af.name,'note':note,'incomplete':incomplete,'raw':body}
-        explanation=EXPLANATIONS[q['id']]
-        assert explanation['answer']==answers[n], f"해설과 공식 정답 불일치: {q['id']}"
-        assert explanation['sourceHash']==hashlib.sha256(body.encode()).hexdigest(), f"문제 원문 변경 후 해설 재검토 필요: {q['id']}"
-        assert explanation['text'].strip(), f"해설 누락: {q['id']}"
-        q.update(explanation=explanation['text'], explanationOrigin='학습용 자체 해설', explanationStatus=explanation['status'])
-        questions.append(q)
-        if incomplete:report.append({'id':q['id'],'issue':'첨부 원문에 ④ 보기 누락 — 학습 기본 제외'})
-    print(f'{month}월: 80문항 / 확정답안 80개 연결')
-assert len(questions)==480 and len({q['id'] for q in questions})==480
-assert set(EXPLANATIONS)=={q['id'] for q in questions}, '해설과 문제은행 문항 집합 불일치'
-(ROOT/'dist/questions.json').write_text(json.dumps(questions,ensure_ascii=False))
-(ROOT/'dist/import-report.json').write_text(json.dumps({'total':len(questions),'issues':report},ensure_ascii=False,indent=2))
-print('원문 확인 필요:',report)
+
+def discover_sources():
+    sessions={}
+    for f in sorted((ROOT/'sources').glob('*.md')):
+        year_match=re.match(r'^(20\d{2})',f.name)
+        short_match=re.match(r'^(\d{2})년',f.name)
+        year=int(year_match[1]) if year_match else 2000+int(short_match[1]) if short_match else None
+        month_match=re.search(r'(\d{1,2})월',f.name)
+        assert year and month_match, f'연도·월 식별 실패: {f.name}'
+        key=(year,int(month_match[1]));role='answer' if '답안' in f.name else 'paper'
+        record=sessions.setdefault(key,{})
+        assert role not in record, f'중복 자료: {key}, {role}'
+        record[role]=f
+    assert all(set(pair)=={'paper','answer'} for pair in sessions.values()), '문제와 답안 쌍이 없는 회차'
+    return sessions
+
+def parse_answers(path):
+    text=path.read_text();answers={};section=0
+    def add(cells,offset):
+        cells=[html.unescape(re.sub(r'<[^>]*>','',c)).strip().strip('[]').strip() for c in cells]
+        if len(cells)!=8 or not all(re.fullmatch(r'\d+',c) for c in cells):return
+        nums=list(map(int,cells));numbers=nums[::2]
+        for n,a in zip(numbers,nums[1::2]):
+            if offset==40 and max(numbers)<=40:n+=40
+            assert 1<=n<=80 and 1<=a<=4, f'답안 범위 오류: {path.name}, {n}, {a}'
+            assert n not in answers,f'답안 중복: {path.name}, {n}'
+            answers[n]=a
+    if re.search(r'<tr\b',text,re.I):
+        kind='html'
+        for row in re.findall(r'<tr\b[^>]*>(.*?)</tr>',text,re.S|re.I):
+            if '세무회계' in row:section=40
+            elif '재무회계' in row:section=0
+            add(re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>',row,re.S|re.I),section)
+    else:
+        kind='markdown'
+        for line in text.splitlines():
+            if '세무회계' in line:section=40
+            elif '재무회계' in line:section=0
+            if line.strip().startswith('|'):add(line.strip().strip('|').split('|'),section)
+        if not answers:
+            kind='plain'
+            assert '재무회계' in text and '세무회계' in text, f'답안 영역 구분 실패: {path.name}'
+            financial,tax=text.split('재무회계',1)[1].split('세무회계',1)
+            for section,part in [(0,financial),(40,tax)]:
+                part=re.sub(r'\b[12]\)\s*','',part)
+                nums=re.findall(r'\b\d+\b',part)
+                assert len(nums)==80,f'텍스트 답안 길이 오류: {path.name}, {len(nums)}'
+                for start in range(0,len(nums),8):add(nums[start:start+8],section)
+    assert set(answers)==set(range(1,81)), f'80개 확정답안 확인 실패: {path.name}, {len(answers)}'
+    return answers,kind
+
+def signature(q):
+    # Restrict reuse to identical financial-accounting stems and all four options.
+    # Tax questions are deliberately excluded because tax law changes by year.
+    if q['subject']!='재무회계' or len(q['options'])!=4:return None
+    norm=lambda text:re.sub(r'\s+','',text)
+    return norm(q['html']),tuple(sorted(norm(o) for o in q['options']))
+
+def build():
+    questions=[];report=[];sessions=[];sources=discover_sources()
+    for (year,month),pair in sorted(sources.items()):
+        f,af=pair['paper'],pair['answer'];answers,answer_format=parse_answers(af)
+        text=f.read_text();matches=list(re.finditer(r'【\s*(\d+)\s*】',text))
+        assert [int(m[1]) for m in matches]==list(range(1,81)),f'문항 번호 확인 실패: {f.name}'
+        session={'year':year,'month':month,'total':80,'source':f.name,'answerSource':af.name,'answerFormat':answer_format,'available':0}
+        for i,m in enumerate(matches):
+            n=int(m[1]);body=text[m.end():matches[i+1].start() if i<79 else len(text)].strip()
+            if n==40:body=re.split(r'<\s*세무회계\s*>',body)[0].strip()
+            choices=list(re.finditer(r'^\s*(?:-\s*)?([①②③④])\s*',body,re.M))
+            full=len(choices)==4 and [c[1] for c in choices]==list('①②③④')
+            stem=body[:choices[0].start()].strip() if choices else body
+            options=[body[c.end():choices[j+1].start() if j<3 else len(body)].strip() for j,c in enumerate(choices)] if full else []
+            symbols=set(re.findall('[①②③④]',body));missing=[s for s in '①②③④' if s not in symbols];incomplete=bool(missing)
+            topic,unit,note=classify(stem,body,n)
+            q={'id':f'{year}-{month:02d}-{n:02d}','year':year,'month':month,'number':n,'subject':'재무회계' if n<=40 else '세무회계','unit':unit,'topic':topic,'format':'계산형' if re.search('얼마|계산하면|계산한',stem) else '개념형','html':render(stem if full else body),'options':[render(o) for o in options],'answer':answers[n],'source':f.name,'answerSource':af.name,'note':note,'incomplete':incomplete,'raw':body,'missingChoices':missing,'explanationStatus':'pending'}
+            if q['id'] in EXPLANATIONS:
+                e=EXPLANATIONS[q['id']]
+                assert e['answer']==answers[n],f"해설과 공식 정답 불일치: {q['id']}"
+                assert e['sourceHash']==hashlib.sha256(body.encode()).hexdigest(),f"문제 원문 변경 후 해설 재검토 필요: {q['id']}"
+                assert e['text'].strip(),f"해설 누락: {q['id']}"
+                q.update(explanation=e['text'],explanationOrigin='학습용 자체 해설',explanationStatus=e['status'])
+            questions.append(q)
+            if incomplete:report.append({'id':q['id'],'issue':'첨부 원문에 '+', '.join(missing)+' 보기 누락 — 학습 기본 제외','year':year,'month':month,'number':n})
+            else:session['available']+=1
+        sessions.append(session)
+        print(f'{year}년 {month}월: 80문항 / 답안80개 ({answer_format}), 학습가능 {session["available"]}개')
+    assert len({q['id'] for q in questions})==len(questions)==len(sources)*80
+    assert set(EXPLANATIONS)<={q['id'] for q in questions},'해설의 대상 문항 누락'
+    reusable={}
+    for q in questions:
+        key=signature(q)
+        if key and q.get('explanation') and not q['incomplete']:reusable.setdefault(key,[]).append(q)
+    for q in questions:
+        if q.get('explanation') or q['incomplete']:continue
+        for other in reusable.get(signature(q),[]):
+            normalize=lambda text:re.sub(r'\s+','',text)
+            source_options=[normalize(o) for o in other['options']];target_options=[normalize(o) for o in q['options']]
+            if len(set(source_options))!=4:continue
+            if source_options[other['answer']-1]!=target_options[q['answer']-1]:continue
+            translation={ord('①②③④'[i]):'①②③④'[target_options.index(o)] for i,o in enumerate(source_options)}
+            q.update(explanation=other['explanation'].translate(translation),explanationOrigin='학습용 자체 해설 (동일 문항 연결)',explanationStatus='matched',explanationSourceId=other['id'])
+            break
+    (ROOT/'dist').mkdir(exist_ok=True)
+    (ROOT/'dist/questions.json').write_text(json.dumps(questions,ensure_ascii=False))
+    (ROOT/'dist/import-report.json').write_text(json.dumps({'total':len(questions),'available':sum(s['available'] for s in sessions),'sessions':sessions,'issues':report,'explanations':{'available':sum(bool(q.get('explanation')) for q in questions),'pending':sum(not q.get('explanation') for q in questions)}},ensure_ascii=False,indent=2))
+    print('총 문항:',len(questions),'원문 확인 필요:',len(report),'해설 연결:',sum(bool(q.get('explanation')) for q in questions))
+    return questions,sessions,report
+
+if __name__=='__main__':build()
