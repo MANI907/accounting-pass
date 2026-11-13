@@ -4,8 +4,14 @@
   "private": true,
   "description": "회계관리 1급 개인용 기출 학습 노트",
   "scripts": {
-    "build": "python3 scripts/build.py",
+    "build": "python3 scripts/build.py && node scripts/build-web.mjs",
     "dev": "python3 -m http.server 5173 --directory dist",
     "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

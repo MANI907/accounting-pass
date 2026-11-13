@@ -1,5 +1,5 @@
 [build]
-  command = "python3 scripts/build.py"
+  command = "npm run build"
   publish = "dist"
 
 [[headers]]

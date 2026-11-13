@@ -3,6 +3,7 @@ const {KEY,MEMOS_KEY,due,grade,validateBackup,validateMemos,readBackup,mergeMemo
 const main=document.querySelector('#main');
 let Q=[],records={},view='home',queue=[],pos=0,selected=0,confidence='sure',submitted=false;
 let memos=[],selectedMemoId=null,memoSearch='',memoSaveError=false;
+let browserMemos=[],cloud=null,authMode='login',authMessage='',authBusy=false;
 let homeYear=2026;
 const years=()=>[...new Set(Q.map(q=>q.year))].sort((a,b)=>b-a);
 let filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all'};
@@ -43,10 +44,38 @@ function result(q){const r=rec(q);return `<section class="result ${r.correct?'':
 function topics(){const groups=new Map();for(const q of usable()){const t=topic(q);if(!groups.has(t))groups.set(t,[]);groups.get(t).push(q)}main.innerHTML=`<h1>유형별 학습</h1><p class="subtitle">같은 유형을 모아 풀고, 이해한 범위를 확인하세요. 자동 분류는 각 문제에서 수정할 수 있어요.</p><div class="topic-grid" style="margin-top:28px">${[...groups].sort((a,b)=>a[1][0].subject.localeCompare(b[1][0].subject)).map(([t,qs])=>{let done=qs.filter(q=>rec(q).attempts).length;return `<button class="topic-card" data-topic="${esc(t)}"><span class="pill">${qs[0].subject} / ${qs[0].unit}</span><h3>${esc(t)}</h3><p>${qs.length}문항 / 학습 ${done}문항</p><div class="progress"><i style="width:${done/qs.length*100}%"></i></div><div class="progress-label"><span>${done===0?'미학습':done===qs.length?'학습 완료':'학습 중'}</span><span>${Math.round(done/qs.length*100)}%</span></div></button>`}).join('')}</div>`}
 function list(saved=false){const qs=usable().filter(q=>saved?rec(q).bookmarked:rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))));main.innerHTML=`<h1>${saved?'북마크':'오답과 복습'}</h1><p class="subtitle">${saved?'별표를 눌러 모아둔 문제를 다시 만나보세요.':'오답·불확실한 정답·복습일이 된 문제를 모았어요.'}</p><div class="section-heading"><h2>${qs.length}문항</h2>${qs.length?`<button class="primary" data-action="${saved?'saved-study':'review'}">모아서 풀기</button>`:''}</div>${qs.length?qs.map(q=>`<div class="list-row"><div><h3>${esc(topic(q))}</h3><p>${q.year}년 ${q.month}월 / ${q.subject} ${q.number}번 <span class="slash">/</span> ${!rec(q).attempts?'미학습':!rec(q).correct?'오답':rec(q).confidence!=='sure'?'확신 부족':'복습일 도래'}</p></div><button class="secondary" data-question="${q.id}">풀어보기</button></div>`).join(''):empty(saved?'아직 북마크한 문제가 없어요':'지금은 복습할 문제가 없어요',saved?'문제 오른쪽 위의 ☆를 누르면 여기에 모여요.':'기출을 풀면 복습할 문제를 자동으로 모아드려요.')}`}
 function saveMemos(){
- try{localStorage.setItem(MEMOS_KEY,JSON.stringify(validateMemos(memos)));memoSaveError=false;return true}
+ if(cloud?.user){const m=memos.find(item=>item.id===selectedMemoId);if(m)cloud.put(m);memoSaveError=cloud.sync?.cacheError||false;return !memoSaveError;}
+ try{localStorage.setItem(MEMOS_KEY,JSON.stringify(validateMemos(memos)));browserMemos=validateMemos(memos);memoSaveError=false;return true}
  catch(e){if(!memoSaveError)toast('메모를 저장하지 못했습니다. 기록 내보내기로 백업해 주세요.');memoSaveError=true;return false}
 }
 const memoDate=time=>new Date(time).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric'});
+function memoStatus(){
+ if(!cloud?.user)return memoSaveError?'저장 실패 / 백업해 주세요':'자동 저장됨 · 이 브라우저';
+ return ({saved:'계정에 저장됨',pending:'이 기기에 임시 보관 · 저장 대기',syncing:'계정에 저장 중…',offline:'서버 저장 실패 · 이 기기에 보관 중', 'cache-error':'임시 보관 실패 · 기록을 내보내 주세요'})[cloud.status]||'저장 상태 확인 중…';
+}
+function memoAccount(){
+ const area=document.querySelector('#memo-account');if(!area)return;
+ if(cloud?.user){area.innerHTML=`<div class="memo-account-line"><div><strong>계정 메모장</strong><span>${esc(cloud.user.email)}</span><p>같은 계정으로 로그인하면 다른 기기에서도 메모를 불러옵니다.</p></div><div class="account-actions"><button class="secondary" data-action="memo-sync">지금 동기화</button><button class="text-btn" data-action="memo-logout">로그아웃</button></div></div>${browserMemos.length?`<div class="memo-migration">이 브라우저에 작성한 메모 ${browserMemos.length}개가 따로 보관되어 있습니다. <button class="text-btn" data-action="memo-migrate">계정으로 복사</button></div>`:''}`;
+ }else{area.innerHTML=`<div class="memo-account-line"><div><strong>메모를 계정에 보관하세요</strong><p>로그인하면 서버에 자동 저장됩니다. 로그인 전 메모는 이 브라우저에 보관됩니다.</p></div><button class="secondary" data-action="memo-login" ${!cloud?.configured?'disabled':''}>로그인 / 가입</button></div>${cloud?.status==='unconfigured'?'<p class="small muted">계정 저장 기능을 연결하고 있습니다. 기존 메모는 그대로 보관됩니다.</p>':cloud?.status==='unavailable'?'<p class="small muted">계정 연결을 확인하지 못했습니다. 잠시 후 새로고침해 주세요.</p>':''}`;}
+ const status=document.querySelector('#memo-save-status');if(status)status.textContent=memoStatus();
+ const help=document.querySelector('#memo-storage-help');if(help)help.textContent=cloud?.user?'입력하면 계정에 자동 저장됩니다.':'입력하면 현재 브라우저에 자동 저장됩니다.';
+}
+function authDialog(){
+ const dialog=document.querySelector('#memo-auth');const recovery=authMode==='password';
+ document.querySelector('#memo-auth-title').textContent=({login:'메모장 로그인',signup:'메모장 계정 만들기',reset:'비밀번호 재설정',password:'새 비밀번호 설정'})[authMode];
+ document.querySelector('#memo-auth-fields').innerHTML=`${!recovery?'<label for="memo-email">이메일</label><input id="memo-email" type="email" autocomplete="email" required maxlength="254">':''}${authMode!=='reset'?`<label for="memo-password">${recovery?'새 비밀번호':'비밀번호'}</label><input id="memo-password" type="password" autocomplete="${authMode==='login'?'current-password':'new-password'}" required minlength="${authMode==='login'?1:10}" maxlength="128">`:''}`;
+ document.querySelector('#memo-auth-submit').textContent=({login:'로그인',signup:'계정 만들기',reset:'재설정 메일 받기',password:'비밀번호 저장'})[authMode];
+ document.querySelector('#memo-auth-links').innerHTML=recovery?'':`<button type="button" class="text-btn" data-auth-mode="${authMode==='signup'?'login':'signup'}">${authMode==='signup'?'기존 계정으로 로그인':'계정 만들기'}</button><button type="button" class="text-btn" data-auth-mode="${authMode==='reset'?'login':'reset'}">${authMode==='reset'?'로그인으로 돌아가기':'비밀번호를 잊었어요'}</button>`;
+ document.querySelector('#memo-auth-status').textContent=authMessage;
+ if(!dialog.open)dialog.showModal();
+}
+function refreshMemoScreen(){
+ if(view!=='memos')return;
+ if(!memos.some(m=>m.id===selectedMemoId)){selectedMemoId=[...memos].sort((a,b)=>b.updatedAt-a.updatedAt)[0]?.id||null;memoEditor();}
+ const m=memos.find(m=>m.id===selectedMemoId),title=document.querySelector('#memo-title'),text=document.querySelector('#memo-text');
+ if(m&&(!title||title.value!==m.title||text?.value!==m.text))memoEditor();
+ memoList();memoAccount();
+}
 function memoList(){
  const container=document.querySelector('#memo-list');if(!container)return;
  const search=memoSearch.trim().toLocaleLowerCase();
@@ -58,15 +87,15 @@ function memoEditor(){
  const container=document.querySelector('#memo-editor');if(!container)return;
  const m=memos.find(item=>item.id===selectedMemoId);
  if(!m){container.innerHTML='<div class="memo-empty"><h2>시험 전에 기억할 내용을 적어두세요.</h2><p>헷갈리는 개념과 계산식, 자주 틀리는 포인트를 모아보세요.</p><button class="secondary" data-action="memo-new">첫 메모 쓰기</button></div>';return;}
- container.innerHTML=`<div class="memo-editor-toolbar"><span id="memo-save-status" role="status">${memoSaveError?'저장 실패 / 백업해 주세요':'자동 저장됨'}</span><button class="text-btn" data-action="memo-delete">메모 삭제</button></div><label for="memo-title" class="visually-hidden">메모 제목</label><input id="memo-title" class="memo-title" maxlength="120" value="${esc(m.title)}" placeholder="메모 제목" autocomplete="off"><label for="memo-text" class="visually-hidden">암기할 내용</label><textarea id="memo-text" class="memo-text" maxlength="20000" spellcheck="false" placeholder="시험 전 암기할 내용을 적어보세요.
+ container.innerHTML=`<div class="memo-editor-toolbar"><span id="memo-save-status" role="status">${memoStatus()}</span><button class="text-btn" data-action="memo-delete">메모 삭제</button></div><label for="memo-title" class="visually-hidden">메모 제목</label><input id="memo-title" class="memo-title" maxlength="120" value="${esc(m.title)}" placeholder="메모 제목" autocomplete="off"><label for="memo-text" class="visually-hidden">암기할 내용</label><textarea id="memo-text" class="memo-text" maxlength="20000" spellcheck="false" placeholder="시험 전 암기할 내용을 적어보세요.
 
 예: 영세율은 매입세액 공제·환급 가능
 면세는 관련 매입세액 공제 불가">${esc(m.text)}</textarea><div class="memo-editor-footer"><span>수정 ${memoDate(m.updatedAt)}</span><span id="memo-length">${m.text.length.toLocaleString('ko-KR')} / 20,000자</span></div>`;
 }
 function notebook(){
  if(!memos.some(m=>m.id===selectedMemoId))selectedMemoId=[...memos].sort((a,b)=>b.updatedAt-a.updatedAt)[0]?.id||null;
- main.innerHTML=`<div class="page-heading"><div><h1>메모장</h1><p class="subtitle">시험 전 암기할 개념과 계산식을 모아두세요.</p></div><button class="primary" data-action="memo-new">새 메모</button></div><div class="memo-help"><span id="memo-count">${memos.length}개 메모</span><span>입력하면 자동 저장됩니다. 현재 브라우저에서만 보관됩니다.</span></div><div class="notebook-layout"><section class="memo-index" aria-label="메모 목록"><label for="memo-search" class="visually-hidden">메모 검색</label><input id="memo-search" type="search" placeholder="제목이나 내용 검색" value="${esc(memoSearch)}"><div id="memo-list"></div></section><section id="memo-editor" class="memo-editor" aria-label="메모 편집"></section></div>`;
- memoList();memoEditor();
+ main.innerHTML=`<div class="page-heading"><div><h1>메모장</h1><p class="subtitle">시험 전 암기할 개념과 계산식을 모아두세요.</p></div><button class="primary" data-action="memo-new">새 메모</button></div><section id="memo-account" class="memo-account" aria-label="메모 저장 계정"></section><div class="memo-help"><span id="memo-count">${memos.length}개 메모</span><span id="memo-storage-help"></span></div><div class="notebook-layout"><section class="memo-index" aria-label="메모 목록"><label for="memo-search" class="visually-hidden">메모 검색</label><input id="memo-search" type="search" placeholder="제목이나 내용 검색" value="${esc(memoSearch)}"><div id="memo-list"></div></section><section id="memo-editor" class="memo-editor" aria-label="메모 편집"></section></div>`;
+ memoList();memoEditor();memoAccount();
 }
 function addMemo(){
  if(memos.length>=1000){toast('메모는 최대 1,000개까지 보관할 수 있습니다.');return;}
@@ -77,19 +106,39 @@ function restoreBackup(parsed){
  const nextRecords={...records,...parsed.records};
  const nextMemos=parsed.memos===null?memos:mergeMemos(memos,parsed.memos);
  const previousRecords=localStorage.getItem(KEY),previousMemos=localStorage.getItem(MEMOS_KEY);
- try{localStorage.setItem(KEY,JSON.stringify(nextRecords));localStorage.setItem(MEMOS_KEY,JSON.stringify(nextMemos));}
+ try{localStorage.setItem(KEY,JSON.stringify(nextRecords));if(!cloud?.user)localStorage.setItem(MEMOS_KEY,JSON.stringify(nextMemos));}
  catch(error){
   try{if(previousRecords===null)localStorage.removeItem(KEY);else localStorage.setItem(KEY,previousRecords);if(previousMemos===null)localStorage.removeItem(MEMOS_KEY);else localStorage.setItem(MEMOS_KEY,previousMemos);}catch{}
   throw Error('저장 공간이 부족하거나 저장이 차단되어 백업을 가져오지 못했습니다.');
  }
  records=nextRecords;memos=nextMemos;memoSaveError=false;
+ if(cloud?.user){for(const m of nextMemos)cloud.put(m);}else browserMemos=validateMemos(memos);
 }
 function render(){if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else list(view==='saved')}
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.dataset.memo){selectedMemoId=b.dataset.memo;memoList();memoEditor();return}
+ if(b.dataset.authMode){authMode=b.dataset.authMode;authMessage='';authDialog();return}
+ if(b.dataset.action==='memo-login'){authMode='login';authMessage='';authDialog();return}
+ if(b.dataset.action==='memo-sync'){cloud?.refresh();return}
+ if(b.dataset.action==='memo-logout'){
+  if(cloud?.sync?.count&&!confirm('서버에 저장 대기 중인 메모가 있습니다. 이 기기에 임시 보관되며 같은 계정으로 다시 로그인하면 저장을 재시도합니다. 로그아웃할까요?'))return;
+  try{await cloud.logout();toast('로그아웃했습니다.')}catch{toast('로그아웃하지 못했습니다. 다시 시도해 주세요.')}return;
+ }
+ if(b.dataset.action==='memo-migrate'){
+  const current=cloud;if(!current?.user||!browserMemos.length)return;
+  if(!confirm(`이 브라우저의 메모 ${browserMemos.length}개를 ${current.user.email} 계정으로 복사할까요? 브라우저 원본도 유지합니다.`))return;
+  b.disabled=true;let count=0;
+  for(const m of browserMemos){
+   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(m.id));
+   const id='import-'+[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+   if(cloud!==current||!current.user)return;
+   if(!current.sync.items[id]&&memos.length<1000){current.put({...m,id});count++;}
+  }
+  await current.refresh();toast(count?`${count}개 메모를 복사했습니다. 저장 상태를 확인해 주세요.`:'이미 복사한 메모는 유지합니다. 최대 1,000개까지 저장할 수 있습니다.');refreshMemoScreen();return;
+ }
  if(b.dataset.action==='memo-new'){addMemo();return}
- if(b.dataset.action==='memo-delete'){const m=memos.find(item=>item.id===selectedMemoId);if(m&&confirm('이 메모를 삭제할까요? 삭제한 내용은 복원할 수 없습니다.')){const next=memos.filter(item=>item.id!==m.id);try{localStorage.setItem(MEMOS_KEY,JSON.stringify(next));memos=next;selectedMemoId=null;memoSaveError=false;notebook();toast('메모를 삭제했습니다.')}catch{toast('삭제 내용을 저장하지 못했습니다. 메모를 유지합니다.')}}return}
+ if(b.dataset.action==='memo-delete'){const m=memos.find(item=>item.id===selectedMemoId);if(m&&confirm('이 메모를 삭제할까요? 삭제한 내용은 복원할 수 없습니다.')){if(cloud?.user){cloud.remove(m.id);selectedMemoId=null;notebook();toast('삭제 내용을 계정에 저장합니다.')}else{const next=memos.filter(item=>item.id!==m.id);try{localStorage.setItem(MEMOS_KEY,JSON.stringify(next));memos=next;browserMemos=validateMemos(memos);selectedMemoId=null;memoSaveError=false;notebook();toast('메모를 삭제했습니다.')}catch{toast('삭제 내용을 저장하지 못했습니다. 메모를 유지합니다.')}}}return}
  if(b.dataset.view){if(b.dataset.view==='study'&&!queue.length)start();else setView(b.dataset.view);return}
  if(b.dataset.subject){start({subject:b.dataset.subject,year:b.dataset.year||''});return}if(b.dataset.month){start({month:b.dataset.month,year:b.dataset.year||''});return}if(b.dataset.topic){start({topic:b.dataset.topic,year:b.dataset.year||''});return}if(b.dataset.question){start({},b.dataset.question);return}
  if(b.dataset.answer){selected=+b.dataset.answer;question();return}if(b.dataset.confidence){confidence=b.dataset.confidence;question();return}
@@ -109,7 +158,7 @@ document.addEventListener('input',e=>{
  const m=memos.find(item=>item.id===selectedMemoId);if(!m)return;
  if(e.target.id==='memo-title')m.title=e.target.value;else m.text=e.target.value;
  m.updatedAt=Math.max(Date.now(),m.createdAt);const saved=saveMemos();memoList();
- document.querySelector('#memo-save-status').textContent=saved?'자동 저장됨':'저장 실패 / 백업해 주세요';
+ document.querySelector('#memo-save-status').textContent=memoStatus();
  document.querySelector('#memo-length').textContent=m.text.length.toLocaleString('ko-KR')+' / 20,000자';
 });
 document.addEventListener('input',e=>{if(e.target.id==='note'&&queue[pos]){const q=queue[pos];records[q.id]={...rec(q),note:e.target.value};save()}});
@@ -133,6 +182,24 @@ document.querySelector('#import').onchange=async e=>{
  }catch(error){document.querySelector('#backup-status').textContent=error.message}
  e.target.value='';
 };
-try{const storedMemos=localStorage.getItem(MEMOS_KEY);memos=storedMemos?validateMemos(JSON.parse(storedMemos)):[]}catch{toast('메모장 기록을 읽을 수 없습니다. 백업 파일이나 브라우저 저장 설정을 확인해 주세요.')}
+document.querySelector('#memo-auth-form').addEventListener('submit',async e=>{
+ e.preventDefault();if(authBusy||!cloud?.client)return;
+ const email=document.querySelector('#memo-email')?.value.trim(),password=document.querySelector('#memo-password')?.value;
+ const status=document.querySelector('#memo-auth-status'),button=document.querySelector('#memo-auth-submit');
+ authBusy=true;button.disabled=true;status.textContent='처리 중…';
+ try{
+  if(authMode==='login'){await cloud.login(email,password);document.querySelector('#memo-auth').close();setView('memos');}
+  else if(authMode==='signup'){const logged=await cloud.signup(email,password);if(logged){document.querySelector('#memo-auth').close();setView('memos');}else status.textContent='확인 메일을 보냈습니다. 메일의 링크를 연 뒤 로그인해 주세요.';}
+  else if(authMode==='reset'){await cloud.reset(email);status.textContent='재설정 메일을 요청했습니다. 메일의 링크에서 새 비밀번호를 설정해 주세요.';}
+  else{await cloud.password(password);document.querySelector('#memo-auth').close();toast('비밀번호를 변경했습니다.');}
+ }catch(error){status.textContent=({invalid_credentials:'이메일 또는 비밀번호를 확인해 주세요.',email_not_confirmed:'확인 메일의 링크를 먼저 열어 주세요.',over_email_send_rate_limit:'메일 요청이 많습니다. 잠시 후 다시 시도해 주세요.',email_address_not_authorized:'이메일 발송 설정을 확인해야 합니다. 사이트 관리자에게 알려 주세요.',user_already_exists:'이미 가입된 이메일입니다. 로그인해 주세요.'})[error.code]||'연결 또는 계정 설정을 확인해 주세요. 잠시 후 다시 시도해 주세요.';}
+ finally{authBusy=false;button.disabled=false;}
+});
+try{const storedMemos=localStorage.getItem(MEMOS_KEY);memos=storedMemos?validateMemos(JSON.parse(storedMemos)):[];browserMemos=validateMemos(memos);}catch{toast('메모장 기록을 읽을 수 없습니다. 백업 파일이나 브라우저 저장 설정을 확인해 주세요.')}
+import('./memo-account.mjs').then(({createMemoAccount})=>createMemoAccount({storage:localStorage,
+ onMemos:items=>{memos=items===null?validateMemos(browserMemos):items;refreshMemoScreen();},
+ onState:state=>{cloud=state;memoAccount();if(state.recovery){authMode='password';authMessage='새 비밀번호를 입력해 주세요.';if(!document.querySelector('#memo-auth').open)authDialog();}},
+ onConflict:()=>toast('다른 기기의 수정 내용을 확인했습니다. 편집 내용은 기기 사본으로 따로 보관합니다.')
+})).then(account=>{cloud=account;memoAccount();}).catch(()=>{cloud={status:'unavailable',configured:false};memoAccount();});
 try{const response=await fetch('./questions.json');if(!response.ok)throw Error('문제 파일을 읽을 수 없습니다.');Q=await response.json();try{const stored=JSON.parse(localStorage.getItem(KEY)||'{}');records=validateBackup({version:1,records:stored},new Set(Q.map(q=>q.id)))}catch(e){toast('기존 기록을 읽을 수 없어요. 브라우저 저장 설정을 확인해 주세요.')}setView('home')}catch(e){main.innerHTML='<h1>문제를 불러오지 못했어요.</h1><p>파일을 직접 열었다면 로컬 서버 또는 Netlify에서 실행해 주세요.</p>';}
 })();

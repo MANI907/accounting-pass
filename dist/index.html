@@ -21,7 +21,7 @@
 </header>
 <div class="shell">
   <main id="main" tabindex="-1"><h1>회계관리 1급</h1><p>기출문제를 불러오고 있습니다.</p><noscript><p>문제 풀이에는 JavaScript가 필요합니다. 브라우저 설정에서 JavaScript를 허용해 주세요.</p></noscript></main>
-  <footer><span>회계관리 1급 <span class="footer-year">2023~2026년 기출 학습</span></span><span>학습 기록은 현재 브라우저에 저장됩니다.</span></footer>
+  <footer><span>회계관리 1급 <span class="footer-year">2023~2026년 기출 학습</span></span><span>로그인한 메모장은 계정에, 풀이 기록은 이 브라우저에 저장됩니다.</span></footer>
 </div>
 <div id="toast" role="status"></div>
 <dialog id="backup" aria-labelledby="backup-title">
@@ -29,6 +29,17 @@
   <h2 id="backup-title">학습 기록 관리</h2><p>풀이 기록, 문제별 풀이 노트, 메모장과 수정한 분류를 파일로 보관할 수 있습니다.</p>
   <div class="backup-actions"><button id="export" class="primary">기록 내보내기</button><label class="file-label" tabindex="0" role="button">백업 가져오기<input type="file" id="import" accept="application/json"></label></div>
   <p class="muted">가져오면 같은 문제의 기존 기록을 덮어씁니다. 같은 ID의 메모는 수정일이 더 최신인 내용을 유지하며, 기존 형식 백업에는 메모장이 없어 현재 메모를 유지합니다.</p><p id="backup-status" role="status"></p>
+</dialog>
+<dialog id="memo-auth" aria-labelledby="memo-auth-title">
+  <form method="dialog"><button class="close" aria-label="닫기">닫기</button></form>
+  <h2 id="memo-auth-title">메모장 로그인</h2>
+  <p>개인 메모는 로그인한 본인만 열람할 수 있습니다.</p>
+  <form id="memo-auth-form" class="memo-auth-form">
+    <div id="memo-auth-fields"></div>
+    <button id="memo-auth-submit" type="submit" class="primary">로그인</button>
+  </form>
+  <div id="memo-auth-links" class="auth-links"></div>
+  <p id="memo-auth-status" role="status"></p>
 </dialog>
 <script src="app.js" defer></script>
 </body>

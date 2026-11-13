@@ -4,3 +4,4 @@ node_modules/
 *.log
 dist/questions.json
 dist/import-report.json
+dist/cloud-client.mjs
