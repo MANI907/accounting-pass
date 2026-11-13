@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {grade,due,validateBackup} from '../dist/core.mjs';
+import {grade,due,validateBackup,validateMemos,readBackup,mergeMemos} from '../dist/core.mjs';
 const questions=JSON.parse(readFileSync(new URL('../dist/questions.json',import.meta.url)));
 const ids=new Set(questions.map(q=>q.id));
 test('every source question has an individual explanation tied to its exact source and official answer',()=>{
@@ -60,5 +60,28 @@ test('backups round-trip and reject invalid answers, IDs, timestamps and oversiz
  assert.deepEqual(validateBackup(JSON.parse(JSON.stringify(data)),ids),data.records);
  for(const change of [{answer:9},{confidence:'invalid'},{dueAt:'tomorrow'},{note:'x'.repeat(20001)}])assert.throws(()=>validateBackup({version:1,records:{'2026-09-72':{...r,...change}}},ids));
  assert.throws(()=>validateBackup({version:1,records:{unknown:r}},ids));
- assert.throws(()=>validateBackup({version:2,records:{}},ids));
+ assert.throws(()=>validateBackup({version:3,records:{}},ids));
+});
+
+const memoFixture={id:'memo-1',title:'부가가치세',text:'영세율: 매입세액 공제·환급 가능',createdAt:100,updatedAt:200};
+test('v2 backups preserve standalone memos; v1 imports leave current memos untouched',()=>{
+ const current={version:2,records:{},memos:[memoFixture]};
+ assert.deepEqual(readBackup(JSON.parse(JSON.stringify(current)),ids),{records:{},memos:[memoFixture]});
+ assert.equal(readBackup({version:1,records:{}},ids).memos,null);
+ assert.throws(()=>readBackup({version:2,records:{}},ids));
+});
+test('merging notebook backups adds distinct memos and never overwrites newer local text',()=>{
+ const newer={...memoFixture,text:'수정한 내용',updatedAt:300};
+ const other={...memoFixture,id:'memo-2',title:'소득세'};
+ const merged=mergeMemos([newer],[memoFixture,other]);
+ assert.equal(merged.length,2);assert.equal(merged.find(m=>m.id==='memo-1').text,'수정한 내용');
+ assert.equal(mergeMemos([memoFixture],[newer])[0].text,'수정한 내용');
+ assert.equal(mergeMemos([memoFixture],[memoFixture]).length,1);
+});
+test('notebook import rejects duplicate IDs, invalid timestamps and oversized content without mutating original data',()=>{
+ assert.throws(()=>validateMemos([memoFixture,memoFixture]));
+ for(const patch of [{id:'<script>'},{updatedAt:50},{updatedAt:Infinity},{title:'x'.repeat(121)},{text:'x'.repeat(20001)}])assert.throws(()=>validateMemos([{...memoFixture,...patch}]));
+ assert.throws(()=>validateMemos({}));
+ const result=validateMemos([memoFixture]);result[0].text='changed';assert.notEqual(result[0].text,memoFixture.text);
+ assert.equal(validateMemos([{...memoFixture,text:'<script>alert(1)</script>'}])[0].text,'<script>alert(1)</script>');
 });

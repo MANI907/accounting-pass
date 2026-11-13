@@ -1,7 +1,8 @@
 (async()=>{
-const {KEY,due,grade,validateBackup}=await import('./core.mjs');
+const {KEY,MEMOS_KEY,due,grade,validateBackup,validateMemos,readBackup,mergeMemos}=await import('./core.mjs');
 const main=document.querySelector('#main');
 let Q=[],records={},view='home',queue=[],pos=0,selected=0,confidence='sure',submitted=false;
+let memos=[],selectedMemoId=null,memoSearch='',memoSaveError=false;
 let filters={subject:'',month:'',topic:'',search:'',mode:'all'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const topic=q=>records[q.id]?.topic||q.topic;
@@ -12,7 +13,7 @@ function toast(s){const el=document.querySelector('#toast');el.textContent=s;el.
 function save(){try{localStorage.setItem(KEY,JSON.stringify(records));return true}catch(e){toast('저장 공간이 부족하거나 저장이 차단되어 있어요. 기록을 내보내 주세요.');return false}}
 function persistPosition(){try{localStorage.setItem('hoedok-current',queue[pos]?.id||'')}catch(e){}}
 function filtered(){return usable().filter(q=>(!filters.subject||q.subject===filters.subject)&&(!filters.month||q.month===+filters.month)&&(!filters.topic||topic(q)===filters.topic)&&(!filters.search||(q.raw+' '+topic(q)+' '+q.number).includes(filters.search))&&(filters.mode!=='unseen'||!rec(q).attempts)&&(filters.mode!=='review'||rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))&&(filters.mode!=='saved'||rec(q).bookmarked))}
-function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크'})[v];render()}
+function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크',memos:'메모장'})[v];render()}
 function start(extra={},id){filters={subject:'',month:'',topic:'',search:'',mode:'all',...extra};queue=filtered();pos=id?Math.max(0,queue.findIndex(q=>q.id===id)):0;reset();setView('study');persistPosition();window.scrollTo(0,0)}
 function reset(){selected=0;confidence='sure';submitted=false}
 function empty(title,desc){return `<div class="empty"><h2>${title}</h2><p>${desc}</p><button class="secondary" data-action="all">전체 기출 보기</button></div>`}
@@ -37,9 +38,54 @@ function question(){const area=document.querySelector('#question-area');const q=
 function result(q){const r=rec(q);return `<section class="result ${r.correct?'':'wrong-result'}" aria-live="polite"><h3>${r.correct?'정답입니다':'오답입니다'}</h3><p>선택한 답 <b>${r.answer}번</b> <span class="slash">/</span> 공식 확정답안 <b>${q.answer}번</b></p><p class="source">채점 출처: ${esc(q.answerSource)} / ${q.number}번</p><p class="small muted">다음 복습: ${new Date(r.dueAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} / ${r.confidence==='sure'?'확실해요':r.confidence==='unsure'?'헷갈려요':'찍었어요'}</p><div class="concept"><h3>문제 해설</h3><p class="explanation-text">${esc(q.explanation||'이 문제의 해설은 준비 중입니다.')}</p><p class="source">${esc(q.explanationOrigin||'학습용 자체 해설')} / 문제에 제시된 회계기준·연도·세율을 적용했습니다. 공식 확정답안과는 별도로 작성한 해설입니다.</p></div><details><summary>문제 출처 확인</summary><p class="source">${esc(q.source)} / ${q.number}번<br>첨부 원문과 확정답안을 연결했습니다.</p></details></section>`}
 function topics(){const groups=new Map();for(const q of usable()){const t=topic(q);if(!groups.has(t))groups.set(t,[]);groups.get(t).push(q)}main.innerHTML=`<h1>유형별 학습</h1><p class="subtitle">같은 유형을 모아 풀고, 이해한 범위를 확인하세요. 자동 분류는 각 문제에서 수정할 수 있어요.</p><div class="topic-grid" style="margin-top:28px">${[...groups].sort((a,b)=>a[1][0].subject.localeCompare(b[1][0].subject)).map(([t,qs])=>{let done=qs.filter(q=>rec(q).attempts).length;return `<button class="topic-card" data-topic="${esc(t)}"><span class="pill">${qs[0].subject} / ${qs[0].unit}</span><h3>${esc(t)}</h3><p>${qs.length}문항 / 학습 ${done}문항</p><div class="progress"><i style="width:${done/qs.length*100}%"></i></div><div class="progress-label"><span>${done===0?'미학습':done===qs.length?'학습 완료':'학습 중'}</span><span>${Math.round(done/qs.length*100)}%</span></div></button>`}).join('')}</div>`}
 function list(saved=false){const qs=usable().filter(q=>saved?rec(q).bookmarked:rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))));main.innerHTML=`<h1>${saved?'북마크':'오답과 복습'}</h1><p class="subtitle">${saved?'별표를 눌러 모아둔 문제를 다시 만나보세요.':'오답·불확실한 정답·복습일이 된 문제를 모았어요.'}</p><div class="section-heading"><h2>${qs.length}문항</h2>${qs.length?`<button class="primary" data-action="${saved?'saved-study':'review'}">모아서 풀기</button>`:''}</div>${qs.length?qs.map(q=>`<div class="list-row"><div><h3>${esc(topic(q))}</h3><p>${q.month}월 / ${q.subject} ${q.number}번 <span class="slash">/</span> ${!rec(q).attempts?'미학습':!rec(q).correct?'오답':rec(q).confidence!=='sure'?'확신 부족':'복습일 도래'}</p></div><button class="secondary" data-question="${q.id}">풀어보기</button></div>`).join(''):empty(saved?'아직 북마크한 문제가 없어요':'지금은 복습할 문제가 없어요',saved?'문제 오른쪽 위의 ☆를 누르면 여기에 모여요.':'기출을 풀면 복습할 문제를 자동으로 모아드려요.')}`}
-function render(){if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else list(view==='saved')}
+function saveMemos(){
+ try{localStorage.setItem(MEMOS_KEY,JSON.stringify(validateMemos(memos)));memoSaveError=false;return true}
+ catch(e){if(!memoSaveError)toast('메모를 저장하지 못했습니다. 기록 내보내기로 백업해 주세요.');memoSaveError=true;return false}
+}
+const memoDate=time=>new Date(time).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric'});
+function memoList(){
+ const container=document.querySelector('#memo-list');if(!container)return;
+ const search=memoSearch.trim().toLocaleLowerCase();
+ const items=[...memos].sort((a,b)=>b.updatedAt-a.updatedAt).filter(m=>(m.title+' '+m.text).toLocaleLowerCase().includes(search));
+ container.innerHTML=items.length?items.map(m=>`<button class="memo-entry ${selectedMemoId===m.id?'selected':''}" data-memo="${esc(m.id)}" ${selectedMemoId===m.id?'aria-current="true"':''}><strong>${esc(m.title.trim()||'제목 없는 메모')}</strong><span>${esc(m.text.trim().slice(0,75)||'내용을 입력하세요.')}</span><small>${memoDate(m.updatedAt)}</small></button>`).join(''):`<p class="memo-list-empty">${memos.length?'검색 결과가 없습니다.':'저장한 메모가 없습니다.'}</p>`;
+ const count=document.querySelector('#memo-count');if(count)count.textContent=memos.length+'개 메모';
+}
+function memoEditor(){
+ const container=document.querySelector('#memo-editor');if(!container)return;
+ const m=memos.find(item=>item.id===selectedMemoId);
+ if(!m){container.innerHTML='<div class="memo-empty"><h2>시험 전에 기억할 내용을 적어두세요.</h2><p>헷갈리는 개념과 계산식, 자주 틀리는 포인트를 모아보세요.</p><button class="secondary" data-action="memo-new">첫 메모 쓰기</button></div>';return;}
+ container.innerHTML=`<div class="memo-editor-toolbar"><span id="memo-save-status" role="status">${memoSaveError?'저장 실패 / 백업해 주세요':'자동 저장됨'}</span><button class="text-btn" data-action="memo-delete">메모 삭제</button></div><label for="memo-title" class="visually-hidden">메모 제목</label><input id="memo-title" class="memo-title" maxlength="120" value="${esc(m.title)}" placeholder="메모 제목" autocomplete="off"><label for="memo-text" class="visually-hidden">암기할 내용</label><textarea id="memo-text" class="memo-text" maxlength="20000" spellcheck="false" placeholder="시험 전 암기할 내용을 적어보세요.
+
+예: 영세율은 매입세액 공제·환급 가능
+면세는 관련 매입세액 공제 불가">${esc(m.text)}</textarea><div class="memo-editor-footer"><span>수정 ${memoDate(m.updatedAt)}</span><span id="memo-length">${m.text.length.toLocaleString('ko-KR')} / 20,000자</span></div>`;
+}
+function notebook(){
+ if(!memos.some(m=>m.id===selectedMemoId))selectedMemoId=[...memos].sort((a,b)=>b.updatedAt-a.updatedAt)[0]?.id||null;
+ main.innerHTML=`<div class="page-heading"><div><h1>메모장</h1><p class="subtitle">시험 전 암기할 개념과 계산식을 모아두세요.</p></div><button class="primary" data-action="memo-new">새 메모</button></div><div class="memo-help"><span id="memo-count">${memos.length}개 메모</span><span>입력하면 자동 저장됩니다. 현재 브라우저에서만 보관됩니다.</span></div><div class="notebook-layout"><section class="memo-index" aria-label="메모 목록"><label for="memo-search" class="visually-hidden">메모 검색</label><input id="memo-search" type="search" placeholder="제목이나 내용 검색" value="${esc(memoSearch)}"><div id="memo-list"></div></section><section id="memo-editor" class="memo-editor" aria-label="메모 편집"></section></div>`;
+ memoList();memoEditor();
+}
+function addMemo(){
+ if(memos.length>=1000){toast('메모는 최대 1,000개까지 보관할 수 있습니다.');return;}
+ const now=Date.now();const m={id:crypto.randomUUID(),title:'',text:'',createdAt:now,updatedAt:now};
+ memos.push(m);selectedMemoId=m.id;memoSearch='';saveMemos();setView('memos');document.querySelector('#memo-title').focus();
+}
+function restoreBackup(parsed){
+ const nextRecords={...records,...parsed.records};
+ const nextMemos=parsed.memos===null?memos:mergeMemos(memos,parsed.memos);
+ const previousRecords=localStorage.getItem(KEY),previousMemos=localStorage.getItem(MEMOS_KEY);
+ try{localStorage.setItem(KEY,JSON.stringify(nextRecords));localStorage.setItem(MEMOS_KEY,JSON.stringify(nextMemos));}
+ catch(error){
+  try{if(previousRecords===null)localStorage.removeItem(KEY);else localStorage.setItem(KEY,previousRecords);if(previousMemos===null)localStorage.removeItem(MEMOS_KEY);else localStorage.setItem(MEMOS_KEY,previousMemos);}catch{}
+  throw Error('저장 공간이 부족하거나 저장이 차단되어 백업을 가져오지 못했습니다.');
+ }
+ records=nextRecords;memos=nextMemos;memoSaveError=false;
+}
+function render(){if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else list(view==='saved')}
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.memo){selectedMemoId=b.dataset.memo;memoList();memoEditor();return}
+ if(b.dataset.action==='memo-new'){addMemo();return}
+ if(b.dataset.action==='memo-delete'){const m=memos.find(item=>item.id===selectedMemoId);if(m&&confirm('이 메모를 삭제할까요? 삭제한 내용은 복원할 수 없습니다.')){const next=memos.filter(item=>item.id!==m.id);try{localStorage.setItem(MEMOS_KEY,JSON.stringify(next));memos=next;selectedMemoId=null;memoSaveError=false;notebook();toast('메모를 삭제했습니다.')}catch{toast('삭제 내용을 저장하지 못했습니다. 메모를 유지합니다.')}}return}
  if(b.dataset.view){if(b.dataset.view==='study'&&!queue.length)start();else setView(b.dataset.view);return}
  if(b.dataset.subject){start({subject:b.dataset.subject});return}if(b.dataset.month){start({month:b.dataset.month});return}if(b.dataset.topic){start({topic:b.dataset.topic});return}if(b.dataset.question){start({},b.dataset.question);return}
  if(b.dataset.answer){selected=+b.dataset.answer;question();return}if(b.dataset.confidence){confidence=b.dataset.confidence;question();return}
@@ -53,13 +99,32 @@ document.addEventListener('click',e=>{
  else if(a==='save-topic'&&q){const t=document.querySelector('#custom-topic').value.trim();if(t){records[q.id]={...rec(q),topic:t};save();question();toast('유형을 저장했어요.')}}
  else if(a==='issues'){main.innerHTML=`<h1>첨부 원문 확인 필요</h1><p class="subtitle">누락된 보기를 임의로 만들지 않았습니다. 이 문항은 기본 출제에서 제외됩니다.</p>${Q.filter(q=>q.incomplete).map(q=>`<article class="question" style="margin:18px 0"><h2>${q.month}월 ${q.number}번</h2><div class="notice">④ 보기가 첨부 MD에 없습니다.</div><div class="question-body">${q.html}</div><p class="source">${esc(q.source)}</p></article>`).join('')}<button class="secondary" data-view="home">학습 홈으로</button>`}
 });
+document.addEventListener('input',e=>{
+ if(e.target.id==='memo-search'){memoSearch=e.target.value;memoList();return;}
+ if(e.target.id!=='memo-title'&&e.target.id!=='memo-text')return;
+ const m=memos.find(item=>item.id===selectedMemoId);if(!m)return;
+ if(e.target.id==='memo-title')m.title=e.target.value;else m.text=e.target.value;
+ m.updatedAt=Math.max(Date.now(),m.createdAt);const saved=saveMemos();memoList();
+ document.querySelector('#memo-save-status').textContent=saved?'자동 저장됨':'저장 실패 / 백업해 주세요';
+ document.querySelector('#memo-length').textContent=m.text.length.toLocaleString('ko-KR')+' / 20,000자';
+});
 document.addEventListener('input',e=>{if(e.target.id==='note'&&queue[pos]){const q=queue[pos];records[q.id]={...rec(q),note:e.target.value};save()}});
 let searchTimer;
 document.addEventListener('input',e=>{if(e.target.id==='f-search'){clearTimeout(searchTimer);const value=e.target.value;searchTimer=setTimeout(()=>{filters.search=value;queue=filtered();pos=0;reset();question();persistPosition()},200)}});
 document.addEventListener('change',e=>{const k=({'f-subject':'subject','f-month':'month','f-topic':'topic','f-mode':'mode'})[e.target.id];if(k){filters[k]=e.target.value;queue=filtered();pos=0;reset();question();persistPosition()}});
 document.querySelector('.file-label').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();document.querySelector('#import').click()}});
 document.querySelector('#backup-open').onclick=()=>document.querySelector('#backup').showModal();
-document.querySelector('#export').onclick=()=>{const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),records},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='accounting-pass-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);document.querySelector('#backup-status').textContent='백업 파일을 내보냈어요.'};
-document.querySelector('#import').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>10*1024*1024)throw Error('10MB 이하 파일을 선택해 주세요.');const parsed=validateBackup(JSON.parse(await f.text()),new Set(Q.map(q=>q.id)));for(const [id,r]of Object.entries(parsed))if(r.answer)r.correct=r.answer===Q.find(q=>q.id===id).answer;records={...records,...parsed};if(save()){document.querySelector('#backup-status').textContent='기록을 가져왔어요.';render()}}catch(error){document.querySelector('#backup-status').textContent=error.message}e.target.value=''};
+document.querySelector('#export').onclick=()=>{const blob=new Blob([JSON.stringify({version:2,exportedAt:new Date().toISOString(),records,memos},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='accounting-pass-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);document.querySelector('#backup-status').textContent='백업 파일을 내보냈어요.'};
+document.querySelector('#import').onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ try{
+  if(f.size>10*1024*1024)throw Error('10MB 이하 파일을 선택해 주세요.');
+  const parsed=readBackup(JSON.parse(await f.text()),new Set(Q.map(q=>q.id)));
+  for(const [id,r]of Object.entries(parsed.records))if(r.answer)r.correct=r.answer===Q.find(q=>q.id===id).answer;
+  restoreBackup(parsed);document.querySelector('#backup-status').textContent='기록과 메모장을 가져왔어요.';render();
+ }catch(error){document.querySelector('#backup-status').textContent=error.message}
+ e.target.value='';
+};
+try{const storedMemos=localStorage.getItem(MEMOS_KEY);memos=storedMemos?validateMemos(JSON.parse(storedMemos)):[]}catch{toast('메모장 기록을 읽을 수 없습니다. 백업 파일이나 브라우저 저장 설정을 확인해 주세요.')}
 try{const response=await fetch('./questions.json');if(!response.ok)throw Error('문제 파일을 읽을 수 없습니다.');Q=await response.json();try{const stored=JSON.parse(localStorage.getItem(KEY)||'{}');records=validateBackup({version:1,records:stored},new Set(Q.map(q=>q.id)))}catch(e){toast('기존 기록을 읽을 수 없어요. 브라우저 저장 설정을 확인해 주세요.')}setView('home')}catch(e){main.innerHTML='<h1>문제를 불러오지 못했어요.</h1><p>파일을 직접 열었다면 로컬 서버 또는 Netlify에서 실행해 주세요.</p>';}
 })();

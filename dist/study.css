@@ -278,3 +278,37 @@ dialog p { font-size: 14px; color: var(--muted); margin: 16px 0; }
 }
 
 .explanation-text { white-space: pre-line; overflow-wrap: anywhere; }
+
+.memo-help { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; margin: 28px 0 16px; color: var(--muted); font-size: 12px; }
+.notebook-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); min-height: 530px; }
+.memo-index { min-width: 0; padding: 20px 20px 20px 0; border-right: 1px solid var(--line); }
+#memo-search { width: 100%; min-height: 42px; padding: 8px 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 3px; font-size: 13px; }
+#memo-list { margin-top: 16px; max-height: 580px; overflow-y: auto; }
+.memo-entry { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 16px 12px; background: none; border: 0; border-bottom: 1px solid var(--line); border-left: 2px solid transparent; text-align: left; overflow-wrap: anywhere; }
+.memo-entry.selected { background: var(--accent-light); border-left-color: var(--accent); }
+.memo-entry strong { font-size: 14px; font-weight: 500; }
+.memo-entry span { color: var(--muted); font-size: 12px; line-height: 1.8; }
+.memo-entry small { color: var(--muted); font-size: 11px; }
+.memo-list-empty { padding: 20px 8px; color: var(--muted); font-size: 13px; }
+.memo-editor { min-width: 0; padding: 20px 32px 24px; background: var(--surface); }
+.memo-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+.memo-editor-toolbar .text-btn { color: var(--error); font-size: 12px; }
+.memo-title { display: block; width: 100%; padding: 16px 0; margin: 8px 0 16px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--ink); font-size: 23px; font-weight: 600; letter-spacing: -.025em; }
+.memo-text { display: block; width: 100%; min-height: 360px; resize: vertical; padding: 8px 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); font-size: 16px; line-height: 2; }
+.memo-title::placeholder, .memo-text::placeholder { color: var(--muted); opacity: 1; }
+.memo-editor-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; color: var(--muted); font-size: 11px; }
+.memo-empty { min-height: 440px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 16px; }
+.memo-empty h2 { font-size: 20px; }
+.memo-empty p { color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) {
+ .memo-help { align-items: flex-start; flex-direction: column; gap: 8px; font-size: 11px; }
+ .notebook-layout { grid-template-columns: minmax(0, 1fr); }
+ .memo-index { padding: 16px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+ #memo-list { max-height: 210px; }
+ .memo-entry { padding: 12px; }
+ .memo-editor { padding: 16px; }
+ .memo-title { font-size: 20px; }
+ .memo-text { min-height: 320px; }
+ .memo-empty { min-height: 300px; }
+ #memo-search { font-size: 16px; }
+}
