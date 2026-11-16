@@ -102,14 +102,14 @@ content/explanations.json의 문항 ID별 text에 개별 해설을 관리합니�
 
 ## 계정 메모 저장 연결
 
-구현은 완료했으며 실제 Supabase 프로젝트 생성은 사용자의 조직 선택을 기다립니다. 아직 서버 저장이 활성화된 상태가 아닙니다.
+Supabase 무료 플랜의 `accounting-pass` 프로젝트(`qtztcbpjmymvolejmkqt`, 서울 리전)에 메모 테이블과 본인 계정 접근 정책을 생성했습니다. 공개 클라이언트 설정도 연결했습니다. 가입 확인 및 비밀번호 재설정 메일이 사이트로 돌아오려면 아래 Auth URL 설정을 Supabase 대시보드에서 저장해야 합니다.
 
 - `database/cloud-memos.sql`: 본인 계정만 SELECT/INSERT/UPDATE할 수 있는 RLS, 버전 조건부 수정, 삭제 동기화용 tombstone. 브라우저에서 `service_role` 키를 사용하지 않습니다.
 - `dist/cloud-config.json`: Supabase 프로젝트 URL과 **publishable key**만 설정합니다. 두 값은 공개 클라이언트 설정이며 비밀키를 넣으면 안 됩니다. 비어 있으면 기존 브라우저 메모 기능을 유지합니다.
 - `src/cloud-client.mjs`, `scripts/build-web.mjs`: 고정 버전 Supabase SDK를 로컬 번들합니다. `npm ci && npm run build`로 배포 파일을 생성합니다.
-- 프로젝트의 Auth URL Configuration에서 Site URL을 `https://accounting-pass-sjeon907.netlify.app`으로 설정하고 Redirect URLs에 `https://accounting-pass-sjeon907.netlify.app/`을 허용해야 가입 확인·비밀번호 재설정 링크가 이 사이트로 돌아옵니다. 이메일/비밀번호 가입과 이메일 확인을 사용합니다. Supabase 기본 메일 발송은 조직 구성원 주소로 제한될 수 있어 타인 가입을 확대할 때 별도 SMTP 설정이 필요합니다.
+- 프로젝트의 Auth URL Configuration(https://supabase.com/dashboard/project/qtztcbpjmymvolejmkqt/auth/url-configuration)에서 Site URL을 `https://accounting-pass-sjeon907.netlify.app`으로 설정하고 Redirect URLs에 `https://accounting-pass-sjeon907.netlify.app/`을 허용해야 가입 확인·비밀번호 재설정 링크가 이 사이트로 돌아옵니다. 이메일/비밀번호 가입과 이메일 확인을 사용합니다. Supabase 기본 메일 발송은 조직 구성원 주소로 제한될 수 있어 타인 가입을 확대할 때 별도 SMTP 설정이 필요합니다.
 - 메모장 → 로그인/가입 → **계정으로 복사**로 브라우저 메모를 가져옵니다. 원본 브라우저 메모는 유지하며 같은 원본은 중복 복사하지 않습니다. 다른 기기는 같은 이메일로 로그인합니다.
 - 서버 응답을 확인한 뒤에만 `계정에 저장됨`을 표시합니다. 네트워크 오류 시 계정별 캐시에 대기 중 편집을 보관하고 재연결·창 활성화·30초 주기로 재시도합니다. 서버 저장 완료 전 브라우저 데이터를 지우면 대기 내용은 사라질 수 있습니다.
 - 동시에 수정하면 서버의 최신 내용을 유지하면서 로컬 편집을 `(기기 사본)`으로 추가합니다. 오래된 기기의 삭제가 최신 수정본을 지우지 않도록 합니다. 로그아웃한 계정의 캐시는 다른 계정에 표시하거나 전송하지 않습니다.
 - 백업 v2는 현재 열려 있는 메모장의 내용을 포함합니다. 계정에 로그인한 상태에서 백업을 가져오면 해당 계정의 저장 대기열에 추가합니다. 풀이 기록·북마크·문제별 풀이 노트는 계속 브라우저별로 관리합니다.
-- 현재 20개 단위 테스트와 DOM 회귀 검증은 통과했습니다. 실제 Auth 왕복·원격 DB 접근권한 검증은 프로젝트 연결 후 수행해야 합니다.
+- 현재 20개 단위 테스트와 DOM 회귀 검증을 통과했습니다. 원격 DB에서 본인 메모 작성·조회·수정, 타 계정 읽기·쓰기 차단, 비로그인 차단, 수정 버전 충돌 및 삭제 동기화를 검증했고 테스트 데이터는 트랜잭션 롤백으로 제거했습니다. 공개 REST API도 비로그인 접근을 401로 거절합니다. Supabase 보안 검사 결과 지적 사항은 없습니다. 실제 이메일 확인·비밀번호 재설정의 왕복 검증은 대시보드 URL 설정 후 진행해야 합니다.
