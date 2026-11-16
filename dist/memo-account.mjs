@@ -1,11 +1,12 @@
 import {MemoSync,supabaseMemoAdapter} from './memo-sync.mjs';
+import {StudySync,supabaseStudyAdapter} from './study-sync.mjs';
 
-export async function createMemoAccount({storage,onMemos,onState,onConflict}){
- const account={client:null,user:null,sync:null,status:'loading',configured:false,recovery:false,ready:false};
+export async function createMemoAccount({storage,answers=new Map(),onMemos,onState,onConflict,onRecords=()=>{}}){
+ const account={client:null,user:null,sync:null,study:null,status:'loading',studyStatus:'loading',configured:false,recovery:false,ready:false};
  const emit=()=>onState(account);
  account.put=m=>account.sync?.put(m);
  account.remove=id=>account.sync?.remove(id);
- account.refresh=()=>account.sync?.sync();
+ account.refresh=()=>Promise.all([account.sync?.sync(),account.study?.sync()]);
  account.login=async(email,password)=>{
   const {error}=await account.client.auth.signInWithPassword({email,password});if(error)throw error;
  };
@@ -25,13 +26,17 @@ export async function createMemoAccount({storage,onMemos,onState,onConflict}){
  function attach(session){
   const user=session?.user||null;
   if(account.user?.id===user?.id&&account.ready)return;
-  account.sync?.close();account.sync=null;account.user=user;account.ready=true;
+  account.sync?.close();account.study?.close();account.sync=null;account.study=null;account.user=user;account.ready=true;
   if(user){
    const sync=new MemoSync({userId:user.id,adapter:supabaseMemoAdapter(account.client,user.id),storage,
     onChange:memos=>{if(account.sync===sync)onMemos(memos)},
     onStatus:status=>{if(account.sync===sync){account.status=status;emit()}},onConflict});
-   account.sync=sync;account.status=sync.status();onMemos(sync.memos);emit();sync.sync();
-  }else{account.status='local';onMemos(null);emit();}
+   const study=new StudySync({userId:user.id,adapter:supabaseStudyAdapter(account.client,user.id),storage,answers,
+    onChange:snapshot=>{if(account.study===study)onRecords(snapshot,user.id)},
+    onStatus:status=>{if(account.study===study){account.studyStatus=status;emit()}}});
+   account.sync=sync;account.study=study;account.status=sync.status();account.studyStatus=study.status();
+   onMemos(sync.memos);onRecords(study.snapshot,user.id);emit();account.refresh();
+  }else{account.status='local';account.studyStatus='local';onMemos(null);onRecords({records:{},position:''},null);emit();}
  }
  try{
   const response=await fetch('./cloud-config.json');if(!response.ok)throw Error('설정을 읽지 못했습니다.');

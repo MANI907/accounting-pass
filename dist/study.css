@@ -22,6 +22,7 @@
   --content: 1160px;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { overflow-x: clip; }
 body { margin: 0; color: var(--ink); background: var(--paper); font: 16px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; }
@@ -55,6 +56,21 @@ h3 { font-size: 16px; letter-spacing: -.02em; }
 .header-description { font-size: 13px; color: var(--muted); border-left: 1px solid var(--line); padding-left: 24px; }
 .backup-btn { margin-left: auto; display: flex; gap: 8px; align-items: center; min-height: 42px; border: 0; padding: 8px 0 8px 8px; background: none; font-size: 13px; color: var(--muted); }
 .backup-btn svg { width: 17px; height: 17px; }
+.session-panel { display: flex; align-items: center; gap: 16px; margin-left: auto; min-width: 0; }
+.session-detail { display: flex; flex-direction: column; min-width: 0; text-align: right; font-size: 12px; }
+#session-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+#session-status { color: var(--muted); font-size: 11px; }
+.session-panel ~ .backup-btn { margin-left: 0; }
+.login-page { max-width: 420px; margin: 24px auto 48px; }
+.login-page h1 { margin: 16px 0 24px; }
+.login-page > p { color: var(--muted); font-size: 14px; line-height: 1.9; }
+.login-page .login-subject { color: var(--ink); font-size: 13px; }
+.login-page .memo-auth-form { margin-top: 32px; }
+#entry-auth-status { color: var(--error); font-size: 13px; margin-top: 12px; }
+.legacy-import { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; margin-top: 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.legacy-import strong { font-size: 14px; font-weight: 500; }
+.legacy-import p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.legacy-import button { flex-shrink: 0; }
 .nav-inner { min-height: 50px; justify-content: space-between; }
 nav { display: flex; gap: 32px; align-self: stretch; }
 nav button { position: relative; background: none; border: 0; padding: 12px 0 16px; font-size: 14px; color: var(--muted); white-space: nowrap; min-height: 48px; }
@@ -333,4 +349,13 @@ dialog p { font-size: 14px; color: var(--muted); margin: 16px 0; }
  .page-heading { flex-wrap: wrap; }
  .heading-action { width: 100%; justify-content: space-between; }
  .memo-account-line { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 760px) {
+ .header-inner { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; gap: 12px 16px; }
+ .session-panel { order: 3; width: 100%; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--line); }
+ .session-detail { margin-right: auto; text-align: left; }
+ .session-panel ~ .backup-btn { margin-left: auto; }
+ .login-page { margin: 8px auto 32px; }
+ .legacy-import { align-items: flex-start; flex-direction: column; gap: 12px; }
 }

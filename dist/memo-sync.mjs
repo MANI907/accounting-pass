@@ -4,7 +4,7 @@ import {validateMemos} from './core.mjs';
 export class MemoSync {
  constructor({userId,adapter,storage,onChange=()=>{},onStatus=()=>{},onConflict=()=>{},uuid=()=>crypto.randomUUID()}){
   this.userId=userId;this.adapter=adapter;this.storage=storage;this.onChange=onChange;this.onStatus=onStatus;this.onConflict=onConflict;this.uuid=uuid;
-  this.key='accounting-pass-cloud-memos-v1:'+userId;this.items=Object.create(null);this.pending=Object.create(null);this.closed=false;this.timer=null;this.running=null;this.cacheError=false;
+  this.key='accounting-pass-cloud-memos-v1:'+userId;this.items=Object.create(null);this.pending=Object.create(null);this.closed=false;this.timer=null;this.running=null;this.cacheError=false;this.loaded=false;
   try{
    const cached=JSON.parse(storage.getItem(this.key)||'null');
    if(cached?.userId===userId){
@@ -19,7 +19,7 @@ export class MemoSync {
  }
  get memos(){return Object.values(this.items).filter(m=>!m.deleted).map(({revision,deleted,...m})=>m)}
  get count(){return Object.keys(this.pending).length}
- status(){return this.cacheError?'cache-error':this.count?'pending':'saved'}
+ status(){return this.cacheError?'cache-error':this.count?'pending':this.loaded?'saved':'loading'}
  notify(){if(!this.closed){this.onChange(this.memos);this.onStatus(this.status())}}
  persist(){
   try{this.storage.setItem(this.key,JSON.stringify({userId:this.userId,items:Object.values(this.items),pending:this.pending}));this.cacheError=false;}
@@ -85,7 +85,7 @@ export class MemoSync {
    const rows=await this.adapter.list();if(this.closed)return;
    const remote=Object.create(null);for(const row of rows){const clean=cleanRow(row);remote[clean.id]=clean;}
    for(const [id,p] of Object.entries(this.pending))remote[id]=this.items[id]||p.memo;
-   this.items=remote;this.persist();this.notify();
+   this.items=remote;this.loaded=true;this.persist();this.notify();
    if(this.count)this.schedule();
   }catch(error){
    if(!this.closed){this.persist();this.onStatus(this.cacheError?'cache-error':'offline');}
