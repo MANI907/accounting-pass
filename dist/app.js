@@ -1,7 +1,8 @@
 (async()=>{
 const {KEY,MEMOS_KEY,due,grade,validateBackup,validateMemos,readBackup,mergeMemos}=await import('./core.mjs');
-const {chapterFor,chapterLabel,chapterStats}=await import('./curriculum.mjs');
-let chapters=[],topicsSubject='재무회계',topicsYear='2026';
+const {chapterFor,chapterLabel,chapterStats,chapterQuestions,questionCounts,questionGroups}=await import('./curriculum.mjs');
+const {createPlanUI}=await import('./plan-ui.mjs');
+let chapters=[],topicsSubject='재무회계',topicsYear='',topicsChapterId='',topicsOriginalId='',topicsGrouping='all';
 const main=document.querySelector('#main');
 let Q=[],records={},view='home',queue=[],pos=0,selected=0,confidence='sure',submitted=false;
 let memos=[],selectedMemoId=null,memoSearch='',memoSaveError=false;
@@ -10,6 +11,7 @@ let browserRecords={},browserPosition='',lastPosition='',activeAccountId=null,re
 let homeYear=2026;
 const years=()=>[...new Set(Q.map(q=>q.year))].sort((a,b)=>b-a);
 let filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all'};
+const planUI=createPlanUI({main,getState:()=>({account:cloud,questions:Q,records,chapters,memos,events:cloud?.study?[...cloud.study.events.values()]:[],view}),navigate:setView,startStudy:start,toast});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const chapter=q=>chapterFor(q,records[q.id],chapters);
 const topic=q=>chapter(q).chapterName;
@@ -19,8 +21,8 @@ const usable=()=>Q.filter(q=>!q.incomplete);
 let toastTimer;
 function toast(s){const el=document.querySelector('#toast');el.textContent=s;el.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display='none',3000)}
 function persistPosition(){if(cloud?.user&&queue[pos])cloud.study.position(queue[pos].id)}
-function filtered(){return usable().filter(q=>(!filters.year||q.year===+filters.year)&&(!filters.subject||q.subject===filters.subject)&&(!filters.month||q.month===+filters.month)&&(!filters.topic||chapter(q).id===filters.topic)&&(!filters.search||(q.raw+' '+topic(q)+' '+q.number).includes(filters.search))&&(filters.mode!=='unseen'||!rec(q).attempts)&&(filters.mode!=='review'||rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))&&(filters.mode!=='saved'||rec(q).bookmarked))}
-function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크',memos:'메모장'})[v];render()}
+function filtered(){return usable().filter(q=>(!filters.planIds||filters.planIds.includes(q.id))&&(!filters.year||q.year===+filters.year)&&(!filters.subject||q.subject===filters.subject)&&(!filters.month||q.month===+filters.month)&&(!filters.topic||chapter(q).id===filters.topic)&&(!filters.search||(q.raw+' '+topic(q)+' '+q.number).includes(filters.search))&&(filters.mode!=='unseen'||!rec(q).attempts)&&(filters.mode!=='review'||rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))&&(filters.mode!=='saved'||rec(q).bookmarked))}
+function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크',memos:'메모장',plan:'내 학습 계획'})[v];render()}
 function start(extra={},id){filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all',...extra};queue=filtered();pos=id?Math.max(0,queue.findIndex(q=>q.id===id)):0;reset();setView('study');persistPosition();window.scrollTo(0,0)}
 function reset(){selected=0;confidence='sure';submitted=false}
 function empty(title,desc){return `<div class="empty"><h2>${title}</h2><p>${desc}</p><button class="secondary" data-action="all">전체 기출 보기</button></div>`}
@@ -32,7 +34,7 @@ function home(){
  const rate=solved.length?Math.round(right/solved.length*100)+'%':'—';
  const months=[...new Set(Q.filter(q=>q.year===homeYear).map(q=>q.month))].sort((a,b)=>a-b),issues=Q.filter(q=>q.year===homeYear&&q.incomplete);
  const canResume=Q.find(q=>q.id===last)?.year===homeYear;
- main.innerHTML=`<div class="page-heading"><div><h1>${homeYear}년 기출문제</h1><p class="subtitle">2023~2026년 기출을 연도와 회차별로 골라 풀 수 있습니다.</p></div><div class="heading-action"><label class="year-control" for="home-year">연도<select id="home-year">${years().map(y=>`<option value="${y}" ${y===homeYear?'selected':''}>${y}년</option>`).join('')}</select></label><button class="primary" data-action="${canResume?'resume':'home-start'}">${canResume?'이어서 풀기':'학습 시작'}</button></div></div>
+ main.innerHTML=`${planUI.homeWidget()}<div class="page-heading"><div><h1>${homeYear}년 기출문제</h1><p class="subtitle">2023~2026년 기출을 연도와 회차별로 골라 풀 수 있습니다.</p></div><div class="heading-action"><label class="year-control" for="home-year">연도<select id="home-year">${years().map(y=>`<option value="${y}" ${y===homeYear?'selected':''}>${y}년</option>`).join('')}</select></label><button class="primary" data-action="${canResume?'resume':'home-start'}">${canResume?'이어서 풀기':'학습 시작'}</button></div></div>
  <dl class="summary-strip"><div class="summary-item"><dt>학습한 문제</dt><dd>${solved.length}<span>/ ${all.length}</span></dd></div><div class="summary-item"><dt>최근 답 정답률</dt><dd>${rate}</dd></div><div class="summary-item"><dt>복습할 문제</dt><dd>${review.length}<span>문항</span></dd></div></dl>
  <div class="home-columns"><div><section aria-labelledby="sessions-title"><div class="section-heading"><h2 id="sessions-title">회차별 문제</h2><span class="small">${months.length}개 회차 / 총 ${Q.filter(q=>q.year===homeYear).length}문항</span></div><table class="exam-table"><caption class="visually-hidden">${homeYear}년 회차별 기출문제와 학습 현황</caption><thead><tr><th scope="col">시행 회차</th><th scope="col">학습 가능</th><th scope="col">학습 현황</th><th scope="col"><span class="visually-hidden">문제 풀기</span></th></tr></thead><tbody>${months.map(m=>{const qs=all.filter(q=>q.month===m),done=qs.filter(q=>rec(q).attempts).length;return `<tr><td><button class="exam-name" data-month="${m}" data-year="${homeYear}"><span>${homeYear}년</span>${m}월</button></td><td>${qs.length}문항</td><td><div class="progress-label"><b>${done}</b> / ${qs.length}</div><div class="progress" aria-hidden="true"><i style="width:${done/qs.length*100}%"></i></div></td><td><button class="exam-open" data-month="${m}" data-year="${homeYear}" aria-label="${homeYear}년 ${m}월 기출문제 풀기">풀기 ${chevron}</button></td></tr>`}).join('')}</tbody></table></section>
  <section class="topic-section" aria-labelledby="quick-topic-title"><div class="section-heading"><h2 id="quick-topic-title">유형 골라 풀기</h2><button class="text-btn" data-view="topics">전체 유형</button></div><div class="topic-preview">${['T5-3','T5-2','F2-3','T2-2'].map(id=>chapters.find(c=>c.id===id)).map(c=>`<button class="topic-chip" data-year="${homeYear}" data-topic="${c.id}"><span>${c.chapterName}</span><small>${all.filter(q=>chapter(q).id===c.id).length}문항</small></button>`).join('')}</div></section></div>
@@ -40,18 +42,49 @@ function home(){
  <details class="source-notice"><summary>자료 안내${issues.length?` / 보기 누락 ${issues.length}문항`:''}</summary><p>선택한 연도의 문제와 답안 ${months.length*2}개 파일을 연결했습니다. ${issues.length?`보기 누락 ${issues.length}문항은 기본 출제에서 제외했습니다. <button class="text-btn" data-action="issues">누락된 원문 확인</button>`:'보기 누락이 확인된 문항은 없습니다.'} 이전 연도 세법은 출제 당시 조건을 적용합니다.</p></details>`;
 }
 function filterBar(){const months=[...new Set(Q.filter(q=>!filters.year||q.year===+filters.year).map(q=>q.month))].sort((a,b)=>a-b);return `<div class="filters"><select aria-label="연도" id="f-year"><option value="">전체 연도</option>${years().map(y=>`<option value="${y}" ${+filters.year===y?'selected':''}>${y}년</option>`).join('')}</select><select aria-label="과목" id="f-subject"><option value="">전체 과목</option>${['재무회계','세무회계'].map(s=>`<option ${filters.subject===s?'selected':''}>${s}</option>`).join('')}</select><select aria-label="회차" id="f-month"><option value="">전체 회차</option>${months.map(m=>`<option value="${m}" ${+filters.month===m?'selected':''}>${m}월</option>`).join('')}</select><select aria-label="유형" id="f-topic"><option value="">전체 유형</option>${chapterOptions(filters.subject,filters.topic)}${filters.topic.endsWith("0-0")?`<option value="${filters.topic}" selected>분류 확인 필요</option>`:""}</select><select id="f-mode" aria-label="학습 상태">${[['all','전체 문제'],['unseen','미학습 우선'],['review','오답과 복습'],['saved','북마크']].map(([v,l])=>`<option value="${v}" ${filters.mode===v?'selected':''}>${l}</option>`).join('')}</select><input id="f-search" type="search" placeholder="지문 / 유형 / 문항번호 검색" aria-label="문제 검색" value="${esc(filters.search)}"></div>`}
-function study(){main.innerHTML=`<h1>기출문제 풀기</h1><p class="subtitle">정답은 제출 후에만 공개돼요. 확신도도 함께 기록해 보세요.</p>${filterBar()}<div id="question-area"></div>`;question();}
+function study(){main.innerHTML=`<h1>기출문제 풀기</h1><p class="subtitle">정답은 제출 후에만 공개돼요. 확신도도 함께 기록해 보세요.</p>${filterBar()}${filters.planIds?'<p class="plan-scope-note">내 학습 계획의 선택 범위로 풀이 중입니다. <button class="text-btn" data-view="plan">계획 보기</button><button class="text-btn" data-action="all">전체 기출 보기</button></p>':''}<div id="question-area"></div>`;question();}
 function question(){if(!cloud?.user)return;const area=document.querySelector('#question-area');if(!area)return;const q=queue[pos];if(!q){area.innerHTML=empty('조건에 맞는 문제가 없어요','과목이나 유형을 바꾸어 다시 찾아보세요.');return}
- const r=rec(q);area.innerHTML=`<div class="study-layout"><article class="question"><div class="question-meta"><span class="pill">${q.subject}</span><span>${q.year}년 ${q.month}월 / ${q.number}번</span><span>${q.format}</span><button class="bookmark" data-action="bookmark" aria-label="${r.bookmarked?'북마크 해제':'북마크 추가'}" aria-pressed="${!!r.bookmarked}">${r.bookmarked?'★':'☆'}</button></div><div class="question-body">${q.html}</div><div class="options" role="group" aria-label="정답 선택">${[1,2,3,4].map(a=>`<button class="option ${selected===a?'selected':''} ${submitted&&a===q.answer?'correct':''} ${submitted&&selected===a&&a!==q.answer?'wrong':''}" data-answer="${a}" aria-pressed="${selected===a}" ${submitted?'disabled':''}><span class="num">${a}</span><div>${q.options.length?q.options[a-1]:'표의 '+['①','②','③','④'][a-1]+'번 보기'}</div>${submitted&&a===q.answer?'<span class="answer-label">정답</span>':''}</button>`).join('')}</div><div class="confidence"><span>이 답에 얼마나 확신하나요?</span>${[['sure','확실해요'],['unsure','헷갈려요'],['guess','찍었어요']].map(([v,l])=>`<button data-confidence="${v}" class="${confidence===v?'selected':''}" aria-pressed="${confidence===v}" ${submitted?'disabled':''}>${l}</button>`).join('')}</div><div class="question-actions"><button class="ghost" data-action="prev" ${pos===0?'disabled':''}>이전</button><span class="small muted">${pos+1} / ${queue.length}</span>${submitted?`<button class="primary" data-action="next">${pos===queue.length-1?'학습 마치기':'다음 문제'}</button>`:`<button class="primary" data-action="submit" ${!selected?'disabled':''}>정답 제출하기</button><button class="ghost" data-action="next">건너뛰기</button>`}</div>${submitted?result(q):''}</article><div class="study-side"><div class="panel"><h3>목차 분류</h3><span class="pill">${chapter(q).part}편 ${esc(chapter(q).partName)}</span><p style="color:var(--ink);margin-top:10px">${esc(chapterLabel(chapter(q)))}</p><p>${r.topic?.startsWith('curriculum:')?'직접 지정한 목차':q.classificationStatus==='review'?'분류 확인 필요 · 문제 내용을 확인해 주세요.':'문제 내용에 따른 분류 · 직접 수정 가능'}</p><p class="small">기존 세부 유형: ${esc(q.topic)}</p>${r.topic&&!r.topic.startsWith('curriculum:')?`<p class="small">나의 기존 분류: ${esc(r.topic)}</p>`:''}<details class="type-fields"><summary>목차 수정하기</summary><label for="custom-topic">이 문제의 학습 단원</label><select id="custom-topic">${chapterOptions(q.subject,chapter(q).id)}</select><button class="secondary" data-action="save-topic">분류 저장</button></details></div><div class="panel"><h3>풀이 노트</h3><textarea id="note" aria-label="나의 풀이 노트" maxlength="20000" placeholder="헷갈린 개념, 계산 과정, 나만의 해설을 남겨보세요.">${esc(r.note||'')}</textarea><p style="margin-bottom:0">입력 내용은 자동 저장됩니다.</p></div><div class="panel"><h3>문제 풀이 기준</h3><p style="margin-bottom:0">${q.year}년 출제 문항입니다. 문제에 제시된 연도·세율·회계기준을 적용하세요. 과거 세법은 최근 기준과 다를 수 있습니다. 풀이 기록과 노트는 로그인한 계정에 저장됩니다.</p></div></div></div>`;
+ const r=rec(q);area.innerHTML=`${topicsChapterId&&filters.topic===topicsChapterId?'<button class="text-btn chapter-return" data-action="chapter-list-return">← 단원 문항 목록</button>':''}<div class="study-layout"><article class="question"><div class="question-meta"><span class="pill">${q.subject}</span><span>${q.year}년 ${q.month}월 / ${q.number}번</span><span>${q.format}</span><button class="bookmark" data-action="bookmark" aria-label="${r.bookmarked?'북마크 해제':'북마크 추가'}" aria-pressed="${!!r.bookmarked}">${r.bookmarked?'★':'☆'}</button></div><div class="question-body">${q.html}</div><div class="options" role="group" aria-label="정답 선택">${[1,2,3,4].map(a=>`<button class="option ${selected===a?'selected':''} ${submitted&&a===q.answer?'correct':''} ${submitted&&selected===a&&a!==q.answer?'wrong':''}" data-answer="${a}" aria-pressed="${selected===a}" ${submitted?'disabled':''}><span class="num">${a}</span><div>${q.options.length?q.options[a-1]:'표의 '+['①','②','③','④'][a-1]+'번 보기'}</div>${submitted&&a===q.answer?'<span class="answer-label">정답</span>':''}</button>`).join('')}</div><div class="confidence"><span>이 답에 얼마나 확신하나요?</span>${[['sure','확실해요'],['unsure','헷갈려요'],['guess','찍었어요']].map(([v,l])=>`<button data-confidence="${v}" class="${confidence===v?'selected':''}" aria-pressed="${confidence===v}" ${submitted?'disabled':''}>${l}</button>`).join('')}</div><div class="question-actions"><button class="ghost" data-action="prev" ${pos===0?'disabled':''}>이전</button><span class="small muted">${pos+1} / ${queue.length}</span>${submitted?`<button class="primary" data-action="next">${pos===queue.length-1?'학습 마치기':'다음 문제'}</button>`:`<button class="primary" data-action="submit" ${!selected?'disabled':''}>정답 제출하기</button><button class="ghost" data-action="next">건너뛰기</button>`}</div>${submitted?result(q):''}</article><div class="study-side"><div class="panel"><h3>목차 분류</h3><span class="pill">${chapter(q).part}편 ${esc(chapter(q).partName)}</span><p style="color:var(--ink);margin-top:10px">${esc(chapterLabel(chapter(q)))}</p><p>${r.topic?.startsWith('curriculum:')?'직접 지정한 목차':q.classificationStatus==='review'?'분류 확인 필요 · 문제 내용을 확인해 주세요.':'문제 내용에 따른 분류 · 직접 수정 가능'}</p><p class="small">기존 세부 유형: ${esc(q.topic)}</p>${r.topic&&!r.topic.startsWith('curriculum:')?`<p class="small">나의 기존 분류: ${esc(r.topic)}</p>`:''}<details class="type-fields"><summary>목차 수정하기</summary><label for="custom-topic">이 문제의 학습 단원</label><select id="custom-topic">${chapterOptions(q.subject,chapter(q).id)}</select><button class="secondary" data-action="save-topic">분류 저장</button></details></div><div class="panel"><h3>풀이 노트</h3><textarea id="note" aria-label="나의 풀이 노트" maxlength="20000" placeholder="헷갈린 개념, 계산 과정, 나만의 해설을 남겨보세요.">${esc(r.note||'')}</textarea><p style="margin-bottom:0">입력 내용은 자동 저장됩니다.</p></div><div class="panel"><h3>문제 풀이 기준</h3><p style="margin-bottom:0">${q.year}년 출제 문항입니다. 문제에 제시된 연도·세율·회계기준을 적용하세요. 과거 세법은 최근 기준과 다를 수 있습니다. 풀이 기록과 노트는 로그인한 계정에 저장됩니다.</p></div></div></div>`;
 }
 function result(q){const r=rec(q);return `<section class="result ${r.correct?'':'wrong-result'}" aria-live="polite"><h3>${r.correct?'정답입니다':'오답입니다'}</h3><p>선택한 답 <b>${r.answer}번</b> <span class="slash">/</span> 공식 확정답안 <b>${q.answer}번</b></p><p class="source">채점 출처: ${esc(q.answerSource)} / ${q.number}번</p><p class="small muted">다음 복습: ${new Date(r.dueAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} / ${r.confidence==='sure'?'확실해요':r.confidence==='unsure'?'헷갈려요':'찍었어요'}</p><div class="concept"><h3>문제 해설</h3><p class="explanation-text">${esc(q.explanation||'이 문항의 개별 해설은 아직 작성되지 않았습니다. 첨부 답안에 따라 채점했으며, 문제에 제시된 출제 연도와 조건을 기준으로 풀이해 주세요.')}</p>${q.explanation?`<p class="source">${esc(q.explanationOrigin)} / 문제에 제시된 회계기준·연도·세율을 적용했습니다. 공식 답안과는 별도로 작성한 해설입니다.</p>`:''}</div><details><summary>문제 출처 확인</summary><p class="source">${esc(q.source)} / ${q.number}번<br>첨부 원문과 확정답안을 연결했습니다.</p></details></section>`}
+function topicYearFilter(){
+ return `<label class="year-control" for="topics-year">연도 필터 <span class="muted">(선택)</span><select id="topics-year"><option value="" ${!topicsYear?'selected':''}>전체 연도</option>${years().map(y=>`<option value="${y}" ${+topicsYear===y?'selected':''}>${y}년</option>`).join('')}</select></label>`;
+}
+function topicScopeSummary(items){
+ const bank=questionCounts(Q),scope=questionCounts(items);
+ return `<p class="curriculum-bank-count small muted">전체 자료: 보유 ${bank.owned.toLocaleString('ko-KR')}문항 · 풀이 가능 ${bank.available.toLocaleString('ko-KR')}문항 · 보기 누락 ${bank.excluded}문항</p><p class="curriculum-summary" id="curriculum-scope" data-owned="${scope.owned}" data-available="${scope.available}">${topicsSubject} · ${topicsYear?topicsYear+'년':'전체 연도'}: 선택 범위 ${scope.owned.toLocaleString('ko-KR')}문항 / 풀이 가능 ${scope.available.toLocaleString('ko-KR')}문항${scope.excluded?' / 원문만 확인 '+scope.excluded+'문항':''}</p>`;
+}
+function topicSubjectTabs(){
+ return `<div class="curriculum-tabs" role="group" aria-label="학습 과목">${['재무회계','세무회계'].map(subject=>`<button data-curriculum-subject="${subject}" aria-pressed="${topicsSubject===subject}" class="${topicsSubject===subject?'active':''}">${subject}</button>`).join('')}</div>`;
+}
+function topicQuestionRow(q){
+ const r=rec(q),preview=q.raw.split(/\r?\n/).find(line=>line.trim())||'원문을 확인하세요.';
+ const status=q.incomplete?'보기 누락 · 풀이 제외':!r.attempts?'미학습':!r.correct?'오답':r.confidence==='sure'?'확실한 정답':'정답 · 확신 부족';
+ return `<article class="chapter-question-row ${q.incomplete?'incomplete':''}" data-listed-question="${q.id}" data-year="${q.year}"><div><p class="small muted">${q.year}년 ${q.month}월 · ${q.number}번 <span class="slash">/</span> ${status}</p><p class="chapter-question-preview">${esc(preview)}</p></div>${q.incomplete?`<button class="secondary" data-original-question="${q.id}">원문 확인</button>`:`<button class="secondary" data-chapter-question="${q.id}">풀기</button>`}</article>`;
+}
+function topicOriginal(q){
+ main.innerHTML=`<button class="text-btn" data-action="chapter-list-return">← 단원 문항 목록</button><h1 class="chapter-page-title">${q.year}년 ${q.month}월 · ${q.subject} ${q.number}번</h1><p class="subtitle">${esc(chapterLabel(chapter(q)))}</p><article class="question original-question"><p class="notice">${esc(q.missingChoices?.join(', ')||'일부')} 보기가 원문에 누락되어 있습니다. 원문은 보관하며 문제 풀이에서는 제외합니다.</p><div class="question-body">${q.html}</div><p class="source">${esc(q.source)}</p></article>`;
+}
+function topicQuestionList(c){
+ const all=chapterQuestions(Q,records,chapters,{subject:topicsSubject,chapterId:c.id});
+ const items=chapterQuestions(all,records,chapters,{year:topicsYear}),available=items.filter(q=>!q.incomplete);
+ const groups=questionGroups(items,topicsGrouping),hasReview=available.some(q=>rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))));
+ main.innerHTML=`<button class="text-btn" data-action="curriculum-outline">← ${topicsSubject} 목차</button><div class="page-heading chapter-page-heading"><div><p class="small muted">${topicsSubject} · ${c.part}편 ${esc(c.partName)}</p><h1>${esc(chapterLabel(c))}</h1><p class="subtitle">이 단원 전체 보유 ${all.length.toLocaleString('ko-KR')}문항. 기본 목록에서는 모든 연도를 함께 볼 수 있습니다.</p></div><div class="heading-action"><button class="primary" data-topic="${c.id}" data-year="${topicsYear}" ${available.length?'':'disabled'}>모아서 풀기</button><button class="text-btn" data-topic="${c.id}" data-year="${topicsYear}" data-mode="review" ${hasReview?'':'disabled'}>복습</button></div></div><div class="curriculum-tools">${topicYearFilter()}<div class="question-grouping" role="group" aria-label="문항 목록 보기 방식"><button data-topics-grouping="all" aria-pressed="${topicsGrouping==='all'}">한 목록으로</button><button data-topics-grouping="year" aria-pressed="${topicsGrouping==='year'}">연도별로 묶기</button></div></div>${topicScopeSummary(items)}<div class="chapter-question-list">${groups.length?groups.map(group=>`<section class="question-year-group" ${group.year?'aria-labelledby="question-year-'+group.year+'"':''}>${group.year?`<div class="section-heading"><h2 id="question-year-${group.year}">${group.year}년</h2><span class="small">${group.questions.length}문항</span></div>`:''}${group.questions.map(topicQuestionRow).join('')}</section>`).join(''):'<p class="chapter-list-empty">선택한 연도에 이 단원의 문항이 없습니다. 연도 필터를 전체 연도로 바꾸어 보세요.</p>'}</div>`;
+}
 function topics(){
- const qs=usable().filter(q=>q.subject===topicsSubject&&(!topicsYear||q.year===+topicsYear));
- const stats=chapterStats(qs,records), groups=new Map();
- for(const c of chapters.filter(c=>c.subject===topicsSubject)){if(!groups.has(c.part))groups.set(c.part,[]);groups.get(c.part).push(c)}
- function card(c){const items=qs.filter(q=>chapter(q).id===c.id),s=chapterStats(items,records);return `<div class="chapter-row"><div class="chapter-title"><strong>${esc(chapterLabel(c))}</strong><span class="small">${s.total}문항 · 풀이 ${s.attempted} · 확실한 정답 ${s.confident}${s.weak?' · 오답/불확실 '+s.weak:''}</span></div><div class="chapter-progress"><div class="progress" role="progressbar" aria-label="${esc(c.chapterName)} 확실한 정답 비율" aria-valuenow="${s.total?Math.round(s.confident/s.total*100):0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${s.total?s.confident/s.total*100:0}%"></i></div><span class="small">${s.total?Math.round(s.confident/s.total*100):0}%</span></div><div class="chapter-actions"><button class="secondary" data-topic="${c.id}" data-year="${topicsYear}" ${s.total?'':'disabled'}>문제 풀기</button><button class="text-btn" data-topic="${c.id}" data-year="${topicsYear}" data-mode="review" ${items.some(q=>rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))?'':'disabled'}>복습</button></div></div>`}
- const unclassified=qs.filter(q=>chapter(q).part===0);
- main.innerHTML=`<div class="page-heading"><div><h1>유형별 학습</h1><p class="subtitle">교재 목차 순서로 기출을 풀고, 확실히 이해한 범위를 확인하세요.</p></div><label class="year-control" for="topics-year">연도<select id="topics-year"><option value="">전체 연도</option>${years().map(y=>`<option value="${y}" ${+topicsYear===y?'selected':''}>${y}년</option>`).join('')}</select></label></div><div class="curriculum-tabs" role="group" aria-label="학습 과목">${['재무회계','세무회계'].map(s=>`<button data-curriculum-subject="${s}" aria-pressed="${topicsSubject===s}" class="${topicsSubject===s?'active':''}">${s}</button>`).join('')}</div><p class="curriculum-summary">${stats.total}문항 중 ${stats.attempted}문항 풀이 · 확실한 정답 ${stats.confident}문항</p><p class="small muted">진행률은 최근 답이 정답이고 ‘확실해요’로 제출한 문항의 비율입니다. 분류는 규칙 기반 초안이며 문제 화면에서 수정할 수 있습니다.</p>${[...groups].map(([p,cs])=>`<section class="curriculum-part" aria-labelledby="part-${p}"><div class="section-heading"><h2 id="part-${p}">${p}편 ${cs[0].partName}</h2><span class="small">${cs[0].standalone?'단일 학습 단원':cs.length+'개 장'}</span></div>${cs.map(card).join('')}</section>`).join('')}${unclassified.length?`<section class="curriculum-part"><h2>분류 확인 필요</h2>${card(chapter(unclassified[0]))}</section>`:''}`;
+ if(topicsOriginalId){const original=Q.find(q=>q.id===topicsOriginalId&&q.incomplete);if(original){topicOriginal(original);return;}topicsOriginalId='';}
+ const selectedChapter=chapters.find(c=>c.id===topicsChapterId&&c.subject===topicsSubject);
+ if(selectedChapter){topicQuestionList(selectedChapter);return;}
+ const source=chapterQuestions(Q,records,chapters,{subject:topicsSubject,year:topicsYear}),groups=new Map();
+ for(const c of chapters.filter(c=>c.subject===topicsSubject)){if(!groups.has(c.part))groups.set(c.part,[]);groups.get(c.part).push(c);}
+ function card(c){
+  const all=Q.filter(q=>q.subject===topicsSubject&&chapter(q).id===c.id),selected=source.filter(q=>chapter(q).id===c.id),available=selected.filter(q=>!q.incomplete);
+  const counts=questionCounts(selected),stats=chapterStats(available,records),percent=stats.total?Math.round(stats.confident/stats.total*100):0;
+  const review=available.some(q=>rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))));
+  return `<div class="chapter-row" data-chapter="${c.id}" data-owned="${all.length}" data-selected="${counts.owned}" data-available="${counts.available}"><div class="chapter-title"><strong>${esc(chapterLabel(c))}</strong><span class="small">전체 보유 ${all.length} · 선택 범위 ${counts.owned} · 풀이 가능 ${counts.available}${counts.excluded?' · 보기 누락 '+counts.excluded:''}</span><span class="small">풀이 ${stats.attempted} · 확실한 정답 ${stats.confident}${stats.weak?' · 오답/불확실 '+stats.weak:''}</span></div><div class="chapter-progress"><div class="progress" role="progressbar" aria-label="${esc(c.chapterName)} 확실한 정답 비율" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><i style="width:${percent}%"></i></div><span class="small">${percent}%</span></div><div class="chapter-actions"><button class="secondary" data-chapter-list="${c.id}" ${selected.length?'':'disabled'}>문항 보기</button><button class="text-btn" data-topic="${c.id}" data-year="${topicsYear}" ${stats.total?'':'disabled'}>문제 풀기</button><button class="text-btn" data-topic="${c.id}" data-year="${topicsYear}" data-mode="review" ${review?'':'disabled'}>복습</button></div></div>`;
+ }
+ const unclassified=source.filter(q=>chapter(q).part===0);
+ main.innerHTML=`<div class="page-heading"><div><h1>유형별 학습</h1><p class="subtitle">연도에 관계없이 교재 목차별 문항을 모아봅니다. 필요한 경우 연도를 골라 범위를 좁힐 수 있습니다.</p></div></div>${topicSubjectTabs()}<div class="curriculum-tools">${topicYearFilter()}</div>${topicScopeSummary(source)}<p class="small muted">진행률은 풀이 가능한 문항 중 최근 답이 정답이고 ‘확실해요’로 제출한 문항의 비율입니다. 분류는 규칙 기반 초안이며 문제 화면에서 수정할 수 있습니다.</p>${[...groups].map(([part,cs])=>`<section class="curriculum-part" aria-labelledby="part-${part}"><div class="section-heading"><h2 id="part-${part}">${part}편 ${cs[0].partName}</h2><span class="small">${cs[0].standalone?'단일 학습 단원':cs.length+'개 장'}</span></div>${cs.map(card).join('')}</section>`).join('')}${unclassified.length?`<section class="curriculum-part"><h2>분류 확인 필요</h2>${card(chapter(unclassified[0]))}</section>`:''}`;
 }
 function list(saved=false){const qs=usable().filter(q=>saved?rec(q).bookmarked:rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))));main.innerHTML=`<h1>${saved?'북마크':'오답과 복습'}</h1><p class="subtitle">${saved?'별표를 눌러 모아둔 문제를 다시 만나보세요.':'오답·불확실한 정답·복습일이 된 문제를 모았어요.'}</p><div class="section-heading"><h2>${qs.length}문항</h2>${qs.length?`<button class="primary" data-action="${saved?'saved-study':'review'}">모아서 풀기</button>`:''}</div>${qs.length?qs.map(q=>`<div class="list-row"><div><h3>${esc(topic(q))}</h3><p>${q.year}년 ${q.month}월 / ${q.subject} ${q.number}번 <span class="slash">/</span> ${!rec(q).attempts?'미학습':!rec(q).correct?'오답':rec(q).confidence!=='sure'?'확신 부족':'복습일 도래'}</p></div><button class="secondary" data-question="${q.id}">풀어보기</button></div>`).join(''):empty(saved?'아직 북마크한 문제가 없어요':'지금은 복습할 문제가 없어요',saved?'문제 오른쪽 위의 ☆를 누르면 여기에 모여요.':'기출을 풀면 복습할 문제를 자동으로 모아드려요.')}`}
 function saveMemos(){
@@ -123,6 +156,8 @@ function accountStatus(){
  const states=[cloud?.status,cloud?.studyStatus];
  if(states.includes('cache-error'))return '임시 저장 실패 · 기록을 내보내 주세요';
  if(states.includes('offline'))return '연결 대기 · 이 기기에 임시 저장';
+ if(cloud?.planner?.status==='saving')return '학습 계획 저장 중…';
+ if(cloud?.planner?.status==='error'&&(cloud.planner.value||planUI.editing))return '계획 설정 확인 필요';
  if(states.some(s=>s==='loading'||s==='syncing'))return '동기화 중…';
  if(cloud?.study?.count||cloud?.sync?.count)return '계정 저장 대기';
  return '계정에 저장됨';
@@ -151,14 +186,14 @@ function loginPage(){
 function receiveStudy(snapshot,userId){
  const switched=activeAccountId!==userId;
  if(switched){
-  activeAccountId=userId;view='home';homeYear=2026;topicsSubject='재무회계';topicsYear='2026';queue=[];pos=0;reset();selectedMemoId=null;memoSearch='';clearTimeout(searchTimer);
+  planUI.reset();activeAccountId=userId;view='home';homeYear=2026;topicsSubject='재무회계';topicsYear='';topicsChapterId='';topicsOriginalId='';topicsGrouping='all';queue=[];pos=0;reset();selectedMemoId=null;memoSearch='';clearTimeout(searchTimer);
   filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all'};
   document.querySelector('#backup').close();main.innerHTML='';
  }
  const firstPosition=!lastPosition;
  records=snapshot.records;lastPosition=snapshot.position;
  if((switched||firstPosition)&&lastPosition)homeYear=Q.find(q=>q.id===lastPosition)?.year||2026;
- if(switched||view==='home'||view==='topics')render();
+ if(switched||view==='home'||view==='topics'||view==='plan'&&!planUI.editing)render();
 }
 async function copyBrowserMemos(account){
  let count=0;const userId=account.user.id;
@@ -173,13 +208,14 @@ async function copyBrowserMemos(account){
 function render(){
  if(!cloud?.user){loginPage();return;}
  renderedAccountId=cloud.user.id;
- if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else list(view==='saved');
+ if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else if(view==='plan')planUI.page();else list(view==='saved');
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.dataset.authMode){authMode=b.dataset.authMode;authMessage='';authDialog();return}
  if(b.dataset.action==='memo-login'){authMode='login';authMessage='';authDialog();return}
  if(!cloud?.user)return;
+ if(b.dataset.planAction){await planUI.handleClick(b);return;}
  if(b.dataset.memo){selectedMemoId=b.dataset.memo;memoList();memoEditor();return}
  if(b.dataset.action==='memo-sync'){cloud?.refresh();return}
  if(b.dataset.action==='memo-logout'){
@@ -207,8 +243,14 @@ document.addEventListener('click',async e=>{
  }
  if(b.dataset.action==='memo-new'){addMemo();return}
  if(b.dataset.action==='memo-delete'){const m=memos.find(item=>item.id===selectedMemoId);if(m&&confirm('이 메모를 삭제할까요? 삭제한 내용은 복원할 수 없습니다.')){cloud.remove(m.id);selectedMemoId=null;notebook();toast('삭제 내용을 계정에 저장합니다.')}return}
- if(b.dataset.view){if(b.dataset.view==='study'&&!queue.length)start();else setView(b.dataset.view);return}
- if(b.dataset.curriculumSubject){topicsSubject=b.dataset.curriculumSubject;topics();return;}
+ if(b.dataset.view){if(b.dataset.view==='topics'){topicsChapterId='';topicsOriginalId='';}if(b.dataset.view==='study'&&!queue.length)start();else setView(b.dataset.view);return}
+ if(b.dataset.curriculumSubject){topicsSubject=b.dataset.curriculumSubject;topicsChapterId='';topicsOriginalId='';topics();return;}
+ if(b.dataset.chapterList){topicsChapterId=b.dataset.chapterList;topicsOriginalId='';topics();return;}
+ if(b.dataset.topicsGrouping){topicsGrouping=b.dataset.topicsGrouping==='year'?'year':'all';topics();return;}
+ if(b.dataset.action==='curriculum-outline'){topicsChapterId='';topicsOriginalId='';topics();return;}
+ if(b.dataset.action==='chapter-list-return'){topicsOriginalId='';setView('topics');return;}
+ if(b.dataset.originalQuestion){topicsOriginalId=b.dataset.originalQuestion;topics();return;}
+ if(b.dataset.chapterQuestion){start({topic:topicsChapterId,subject:topicsSubject,year:topicsYear},b.dataset.chapterQuestion);return;}
  if(b.dataset.subject){start({subject:b.dataset.subject,year:b.dataset.year||''});return}if(b.dataset.month){start({month:b.dataset.month,year:b.dataset.year||''});return}if(b.dataset.topic){start({topic:b.dataset.topic,subject:chapters.find(c=>c.id===b.dataset.topic)?.subject||'',year:b.dataset.year||'',mode:b.dataset.mode||'all'});return}if(b.dataset.question){start({},b.dataset.question);return}
  if(b.dataset.answer){selected=+b.dataset.answer;question();return}if(b.dataset.confidence){confidence=b.dataset.confidence;question();return}
  const q=queue[pos],a=b.dataset.action;
@@ -236,6 +278,7 @@ let searchTimer;
 document.addEventListener('input',e=>{if(e.target.id==='f-search'){clearTimeout(searchTimer);const value=e.target.value;searchTimer=setTimeout(()=>{filters.search=value;queue=filtered();pos=0;reset();question();persistPosition()},200)}});
 document.addEventListener('change',e=>{
  if(!cloud?.user)return;
+ planUI.handleChange(e);
  if(e.target.id==='topics-year'){topicsYear=e.target.value;topics();return;}
  if(e.target.id==='home-year'){homeYear=+e.target.value;home();return;}
  const k=({'f-year':'year','f-subject':'subject','f-month':'month','f-topic':'topic','f-mode':'mode'})[e.target.id];
@@ -255,6 +298,7 @@ document.querySelector('#import').onchange=async e=>{
  e.target.value='';
 };
 document.addEventListener('submit',async e=>{
+ if(e.target.id==='plan-form'){e.preventDefault();if(cloud?.user)await planUI.saveForm(e.target);return;}
  const entry=e.target.id==='entry-auth-form';
  if(!entry&&e.target.id!=='memo-auth-form')return;
  e.preventDefault();if(authBusy||!cloud?.client)return;
@@ -278,11 +322,11 @@ try{
  catch{toast('기존 브라우저 기록을 읽을 수 없습니다. 백업 파일을 확인해 주세요.')}
  render();
  const {createMemoAccount}=await import('./memo-account.mjs');
- cloud=await createMemoAccount({storage:localStorage,answers:new Map(Q.map(q=>[q.id,q.answer])),
+ cloud=await createMemoAccount({storage:localStorage,answers:new Map(Q.map(q=>[q.id,q.answer])),chapters,
   onRecords:receiveStudy,
   onMemos:items=>{memos=items||[];refreshMemoScreen();},
   onState:state=>{
-   cloud=state;updateAccountUI();memoAccount();
+   cloud=state;updateAccountUI();memoAccount();planUI.refresh();
    if(renderedAccountId!==(state.user?.id||null)||(!state.user&&!document.querySelector('#entry-auth-form')))render();
    if(state.recovery){authMode='password';authMessage='새 비밀번호를 입력해 주세요.';if(!document.querySelector('#memo-auth').open)authDialog();}
   },
