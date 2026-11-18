@@ -1,6 +1,7 @@
 (async()=>{
 const {KEY,MEMOS_KEY,due,grade,validateBackup,validateMemos,readBackup,mergeMemos}=await import('./core.mjs');
 const {chapterFor,chapterLabel,chapterStats,chapterQuestions,questionCounts,questionGroups}=await import('./curriculum.mjs');
+const {createPlanUI}=await import('./plan-ui.mjs');
 let chapters=[],topicsSubject='재무회계',topicsYear='',topicsChapterId='',topicsOriginalId='',topicsGrouping='all';
 const main=document.querySelector('#main');
 let Q=[],records={},view='home',queue=[],pos=0,selected=0,confidence='sure',submitted=false;
@@ -10,6 +11,7 @@ let browserRecords={},browserPosition='',lastPosition='',activeAccountId=null,re
 let homeYear=2026;
 const years=()=>[...new Set(Q.map(q=>q.year))].sort((a,b)=>b-a);
 let filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all'};
+const planUI=createPlanUI({main,getState:()=>({account:cloud,questions:Q,records,chapters,memos,events:cloud?.study?[...cloud.study.events.values()]:[],view}),navigate:setView,startStudy:start,toast});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const chapter=q=>chapterFor(q,records[q.id],chapters);
 const topic=q=>chapter(q).chapterName;
@@ -19,8 +21,8 @@ const usable=()=>Q.filter(q=>!q.incomplete);
 let toastTimer;
 function toast(s){const el=document.querySelector('#toast');el.textContent=s;el.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display='none',3000)}
 function persistPosition(){if(cloud?.user&&queue[pos])cloud.study.position(queue[pos].id)}
-function filtered(){return usable().filter(q=>(!filters.year||q.year===+filters.year)&&(!filters.subject||q.subject===filters.subject)&&(!filters.month||q.month===+filters.month)&&(!filters.topic||chapter(q).id===filters.topic)&&(!filters.search||(q.raw+' '+topic(q)+' '+q.number).includes(filters.search))&&(filters.mode!=='unseen'||!rec(q).attempts)&&(filters.mode!=='review'||rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))&&(filters.mode!=='saved'||rec(q).bookmarked))}
-function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크',memos:'메모장'})[v];render()}
+function filtered(){return usable().filter(q=>(!filters.planIds||filters.planIds.includes(q.id))&&(!filters.year||q.year===+filters.year)&&(!filters.subject||q.subject===filters.subject)&&(!filters.month||q.month===+filters.month)&&(!filters.topic||chapter(q).id===filters.topic)&&(!filters.search||(q.raw+' '+topic(q)+' '+q.number).includes(filters.search))&&(filters.mode!=='unseen'||!rec(q).attempts)&&(filters.mode!=='review'||rec(q).attempts&&(!rec(q).correct||rec(q).confidence!=='sure'||due(rec(q))))&&(filters.mode!=='saved'||rec(q).bookmarked))}
+function setView(v){view=v;document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===v);if(b.dataset.view===v)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});document.querySelector('#breadcrumb').textContent=({home:'학습 홈',study:'기출문제',topics:'유형별 학습',review:'오답과 복습',saved:'북마크',memos:'메모장',plan:'내 학습 계획'})[v];render()}
 function start(extra={},id){filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all',...extra};queue=filtered();pos=id?Math.max(0,queue.findIndex(q=>q.id===id)):0;reset();setView('study');persistPosition();window.scrollTo(0,0)}
 function reset(){selected=0;confidence='sure';submitted=false}
 function empty(title,desc){return `<div class="empty"><h2>${title}</h2><p>${desc}</p><button class="secondary" data-action="all">전체 기출 보기</button></div>`}
@@ -32,7 +34,7 @@ function home(){
  const rate=solved.length?Math.round(right/solved.length*100)+'%':'—';
  const months=[...new Set(Q.filter(q=>q.year===homeYear).map(q=>q.month))].sort((a,b)=>a-b),issues=Q.filter(q=>q.year===homeYear&&q.incomplete);
  const canResume=Q.find(q=>q.id===last)?.year===homeYear;
- main.innerHTML=`<div class="page-heading"><div><h1>${homeYear}년 기출문제</h1><p class="subtitle">2023~2026년 기출을 연도와 회차별로 골라 풀 수 있습니다.</p></div><div class="heading-action"><label class="year-control" for="home-year">연도<select id="home-year">${years().map(y=>`<option value="${y}" ${y===homeYear?'selected':''}>${y}년</option>`).join('')}</select></label><button class="primary" data-action="${canResume?'resume':'home-start'}">${canResume?'이어서 풀기':'학습 시작'}</button></div></div>
+ main.innerHTML=`${planUI.homeWidget()}<div class="page-heading"><div><h1>${homeYear}년 기출문제</h1><p class="subtitle">2023~2026년 기출을 연도와 회차별로 골라 풀 수 있습니다.</p></div><div class="heading-action"><label class="year-control" for="home-year">연도<select id="home-year">${years().map(y=>`<option value="${y}" ${y===homeYear?'selected':''}>${y}년</option>`).join('')}</select></label><button class="primary" data-action="${canResume?'resume':'home-start'}">${canResume?'이어서 풀기':'학습 시작'}</button></div></div>
  <dl class="summary-strip"><div class="summary-item"><dt>학습한 문제</dt><dd>${solved.length}<span>/ ${all.length}</span></dd></div><div class="summary-item"><dt>최근 답 정답률</dt><dd>${rate}</dd></div><div class="summary-item"><dt>복습할 문제</dt><dd>${review.length}<span>문항</span></dd></div></dl>
  <div class="home-columns"><div><section aria-labelledby="sessions-title"><div class="section-heading"><h2 id="sessions-title">회차별 문제</h2><span class="small">${months.length}개 회차 / 총 ${Q.filter(q=>q.year===homeYear).length}문항</span></div><table class="exam-table"><caption class="visually-hidden">${homeYear}년 회차별 기출문제와 학습 현황</caption><thead><tr><th scope="col">시행 회차</th><th scope="col">학습 가능</th><th scope="col">학습 현황</th><th scope="col"><span class="visually-hidden">문제 풀기</span></th></tr></thead><tbody>${months.map(m=>{const qs=all.filter(q=>q.month===m),done=qs.filter(q=>rec(q).attempts).length;return `<tr><td><button class="exam-name" data-month="${m}" data-year="${homeYear}"><span>${homeYear}년</span>${m}월</button></td><td>${qs.length}문항</td><td><div class="progress-label"><b>${done}</b> / ${qs.length}</div><div class="progress" aria-hidden="true"><i style="width:${done/qs.length*100}%"></i></div></td><td><button class="exam-open" data-month="${m}" data-year="${homeYear}" aria-label="${homeYear}년 ${m}월 기출문제 풀기">풀기 ${chevron}</button></td></tr>`}).join('')}</tbody></table></section>
  <section class="topic-section" aria-labelledby="quick-topic-title"><div class="section-heading"><h2 id="quick-topic-title">유형 골라 풀기</h2><button class="text-btn" data-view="topics">전체 유형</button></div><div class="topic-preview">${['T5-3','T5-2','F2-3','T2-2'].map(id=>chapters.find(c=>c.id===id)).map(c=>`<button class="topic-chip" data-year="${homeYear}" data-topic="${c.id}"><span>${c.chapterName}</span><small>${all.filter(q=>chapter(q).id===c.id).length}문항</small></button>`).join('')}</div></section></div>
@@ -40,7 +42,7 @@ function home(){
  <details class="source-notice"><summary>자료 안내${issues.length?` / 보기 누락 ${issues.length}문항`:''}</summary><p>선택한 연도의 문제와 답안 ${months.length*2}개 파일을 연결했습니다. ${issues.length?`보기 누락 ${issues.length}문항은 기본 출제에서 제외했습니다. <button class="text-btn" data-action="issues">누락된 원문 확인</button>`:'보기 누락이 확인된 문항은 없습니다.'} 이전 연도 세법은 출제 당시 조건을 적용합니다.</p></details>`;
 }
 function filterBar(){const months=[...new Set(Q.filter(q=>!filters.year||q.year===+filters.year).map(q=>q.month))].sort((a,b)=>a-b);return `<div class="filters"><select aria-label="연도" id="f-year"><option value="">전체 연도</option>${years().map(y=>`<option value="${y}" ${+filters.year===y?'selected':''}>${y}년</option>`).join('')}</select><select aria-label="과목" id="f-subject"><option value="">전체 과목</option>${['재무회계','세무회계'].map(s=>`<option ${filters.subject===s?'selected':''}>${s}</option>`).join('')}</select><select aria-label="회차" id="f-month"><option value="">전체 회차</option>${months.map(m=>`<option value="${m}" ${+filters.month===m?'selected':''}>${m}월</option>`).join('')}</select><select aria-label="유형" id="f-topic"><option value="">전체 유형</option>${chapterOptions(filters.subject,filters.topic)}${filters.topic.endsWith("0-0")?`<option value="${filters.topic}" selected>분류 확인 필요</option>`:""}</select><select id="f-mode" aria-label="학습 상태">${[['all','전체 문제'],['unseen','미학습 우선'],['review','오답과 복습'],['saved','북마크']].map(([v,l])=>`<option value="${v}" ${filters.mode===v?'selected':''}>${l}</option>`).join('')}</select><input id="f-search" type="search" placeholder="지문 / 유형 / 문항번호 검색" aria-label="문제 검색" value="${esc(filters.search)}"></div>`}
-function study(){main.innerHTML=`<h1>기출문제 풀기</h1><p class="subtitle">정답은 제출 후에만 공개돼요. 확신도도 함께 기록해 보세요.</p>${filterBar()}<div id="question-area"></div>`;question();}
+function study(){main.innerHTML=`<h1>기출문제 풀기</h1><p class="subtitle">정답은 제출 후에만 공개돼요. 확신도도 함께 기록해 보세요.</p>${filterBar()}${filters.planIds?'<p class="plan-scope-note">내 학습 계획의 선택 범위로 풀이 중입니다. <button class="text-btn" data-view="plan">계획 보기</button><button class="text-btn" data-action="all">전체 기출 보기</button></p>':''}<div id="question-area"></div>`;question();}
 function question(){if(!cloud?.user)return;const area=document.querySelector('#question-area');if(!area)return;const q=queue[pos];if(!q){area.innerHTML=empty('조건에 맞는 문제가 없어요','과목이나 유형을 바꾸어 다시 찾아보세요.');return}
  const r=rec(q);area.innerHTML=`${topicsChapterId&&filters.topic===topicsChapterId?'<button class="text-btn chapter-return" data-action="chapter-list-return">← 단원 문항 목록</button>':''}<div class="study-layout"><article class="question"><div class="question-meta"><span class="pill">${q.subject}</span><span>${q.year}년 ${q.month}월 / ${q.number}번</span><span>${q.format}</span><button class="bookmark" data-action="bookmark" aria-label="${r.bookmarked?'북마크 해제':'북마크 추가'}" aria-pressed="${!!r.bookmarked}">${r.bookmarked?'★':'☆'}</button></div><div class="question-body">${q.html}</div><div class="options" role="group" aria-label="정답 선택">${[1,2,3,4].map(a=>`<button class="option ${selected===a?'selected':''} ${submitted&&a===q.answer?'correct':''} ${submitted&&selected===a&&a!==q.answer?'wrong':''}" data-answer="${a}" aria-pressed="${selected===a}" ${submitted?'disabled':''}><span class="num">${a}</span><div>${q.options.length?q.options[a-1]:'표의 '+['①','②','③','④'][a-1]+'번 보기'}</div>${submitted&&a===q.answer?'<span class="answer-label">정답</span>':''}</button>`).join('')}</div><div class="confidence"><span>이 답에 얼마나 확신하나요?</span>${[['sure','확실해요'],['unsure','헷갈려요'],['guess','찍었어요']].map(([v,l])=>`<button data-confidence="${v}" class="${confidence===v?'selected':''}" aria-pressed="${confidence===v}" ${submitted?'disabled':''}>${l}</button>`).join('')}</div><div class="question-actions"><button class="ghost" data-action="prev" ${pos===0?'disabled':''}>이전</button><span class="small muted">${pos+1} / ${queue.length}</span>${submitted?`<button class="primary" data-action="next">${pos===queue.length-1?'학습 마치기':'다음 문제'}</button>`:`<button class="primary" data-action="submit" ${!selected?'disabled':''}>정답 제출하기</button><button class="ghost" data-action="next">건너뛰기</button>`}</div>${submitted?result(q):''}</article><div class="study-side"><div class="panel"><h3>목차 분류</h3><span class="pill">${chapter(q).part}편 ${esc(chapter(q).partName)}</span><p style="color:var(--ink);margin-top:10px">${esc(chapterLabel(chapter(q)))}</p><p>${r.topic?.startsWith('curriculum:')?'직접 지정한 목차':q.classificationStatus==='review'?'분류 확인 필요 · 문제 내용을 확인해 주세요.':'문제 내용에 따른 분류 · 직접 수정 가능'}</p><p class="small">기존 세부 유형: ${esc(q.topic)}</p>${r.topic&&!r.topic.startsWith('curriculum:')?`<p class="small">나의 기존 분류: ${esc(r.topic)}</p>`:''}<details class="type-fields"><summary>목차 수정하기</summary><label for="custom-topic">이 문제의 학습 단원</label><select id="custom-topic">${chapterOptions(q.subject,chapter(q).id)}</select><button class="secondary" data-action="save-topic">분류 저장</button></details></div><div class="panel"><h3>풀이 노트</h3><textarea id="note" aria-label="나의 풀이 노트" maxlength="20000" placeholder="헷갈린 개념, 계산 과정, 나만의 해설을 남겨보세요.">${esc(r.note||'')}</textarea><p style="margin-bottom:0">입력 내용은 자동 저장됩니다.</p></div><div class="panel"><h3>문제 풀이 기준</h3><p style="margin-bottom:0">${q.year}년 출제 문항입니다. 문제에 제시된 연도·세율·회계기준을 적용하세요. 과거 세법은 최근 기준과 다를 수 있습니다. 풀이 기록과 노트는 로그인한 계정에 저장됩니다.</p></div></div></div>`;
 }
@@ -154,6 +156,8 @@ function accountStatus(){
  const states=[cloud?.status,cloud?.studyStatus];
  if(states.includes('cache-error'))return '임시 저장 실패 · 기록을 내보내 주세요';
  if(states.includes('offline'))return '연결 대기 · 이 기기에 임시 저장';
+ if(cloud?.planner?.status==='saving')return '학습 계획 저장 중…';
+ if(cloud?.planner?.status==='error'&&(cloud.planner.value||planUI.editing))return '계획 설정 확인 필요';
  if(states.some(s=>s==='loading'||s==='syncing'))return '동기화 중…';
  if(cloud?.study?.count||cloud?.sync?.count)return '계정 저장 대기';
  return '계정에 저장됨';
@@ -182,14 +186,14 @@ function loginPage(){
 function receiveStudy(snapshot,userId){
  const switched=activeAccountId!==userId;
  if(switched){
-  activeAccountId=userId;view='home';homeYear=2026;topicsSubject='재무회계';topicsYear='';topicsChapterId='';topicsOriginalId='';topicsGrouping='all';queue=[];pos=0;reset();selectedMemoId=null;memoSearch='';clearTimeout(searchTimer);
+  planUI.reset();activeAccountId=userId;view='home';homeYear=2026;topicsSubject='재무회계';topicsYear='';topicsChapterId='';topicsOriginalId='';topicsGrouping='all';queue=[];pos=0;reset();selectedMemoId=null;memoSearch='';clearTimeout(searchTimer);
   filters={year:'',subject:'',month:'',topic:'',search:'',mode:'all'};
   document.querySelector('#backup').close();main.innerHTML='';
  }
  const firstPosition=!lastPosition;
  records=snapshot.records;lastPosition=snapshot.position;
  if((switched||firstPosition)&&lastPosition)homeYear=Q.find(q=>q.id===lastPosition)?.year||2026;
- if(switched||view==='home'||view==='topics')render();
+ if(switched||view==='home'||view==='topics'||view==='plan'&&!planUI.editing)render();
 }
 async function copyBrowserMemos(account){
  let count=0;const userId=account.user.id;
@@ -204,13 +208,14 @@ async function copyBrowserMemos(account){
 function render(){
  if(!cloud?.user){loginPage();return;}
  renderedAccountId=cloud.user.id;
- if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else list(view==='saved');
+ if(view==='home')home();else if(view==='study')study();else if(view==='topics')topics();else if(view==='memos')notebook();else if(view==='plan')planUI.page();else list(view==='saved');
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.dataset.authMode){authMode=b.dataset.authMode;authMessage='';authDialog();return}
  if(b.dataset.action==='memo-login'){authMode='login';authMessage='';authDialog();return}
  if(!cloud?.user)return;
+ if(b.dataset.planAction){await planUI.handleClick(b);return;}
  if(b.dataset.memo){selectedMemoId=b.dataset.memo;memoList();memoEditor();return}
  if(b.dataset.action==='memo-sync'){cloud?.refresh();return}
  if(b.dataset.action==='memo-logout'){
@@ -273,6 +278,7 @@ let searchTimer;
 document.addEventListener('input',e=>{if(e.target.id==='f-search'){clearTimeout(searchTimer);const value=e.target.value;searchTimer=setTimeout(()=>{filters.search=value;queue=filtered();pos=0;reset();question();persistPosition()},200)}});
 document.addEventListener('change',e=>{
  if(!cloud?.user)return;
+ planUI.handleChange(e);
  if(e.target.id==='topics-year'){topicsYear=e.target.value;topics();return;}
  if(e.target.id==='home-year'){homeYear=+e.target.value;home();return;}
  const k=({'f-year':'year','f-subject':'subject','f-month':'month','f-topic':'topic','f-mode':'mode'})[e.target.id];
@@ -292,6 +298,7 @@ document.querySelector('#import').onchange=async e=>{
  e.target.value='';
 };
 document.addEventListener('submit',async e=>{
+ if(e.target.id==='plan-form'){e.preventDefault();if(cloud?.user)await planUI.saveForm(e.target);return;}
  const entry=e.target.id==='entry-auth-form';
  if(!entry&&e.target.id!=='memo-auth-form')return;
  e.preventDefault();if(authBusy||!cloud?.client)return;
@@ -315,11 +322,11 @@ try{
  catch{toast('기존 브라우저 기록을 읽을 수 없습니다. 백업 파일을 확인해 주세요.')}
  render();
  const {createMemoAccount}=await import('./memo-account.mjs');
- cloud=await createMemoAccount({storage:localStorage,answers:new Map(Q.map(q=>[q.id,q.answer])),
+ cloud=await createMemoAccount({storage:localStorage,answers:new Map(Q.map(q=>[q.id,q.answer])),chapters,
   onRecords:receiveStudy,
   onMemos:items=>{memos=items||[];refreshMemoScreen();},
   onState:state=>{
-   cloud=state;updateAccountUI();memoAccount();
+   cloud=state;updateAccountUI();memoAccount();planUI.refresh();
    if(renderedAccountId!==(state.user?.id||null)||(!state.user&&!document.querySelector('#entry-auth-form')))render();
    if(state.recovery){authMode='password';authMessage='새 비밀번호를 입력해 주세요.';if(!document.querySelector('#memo-auth').open)authDialog();}
   },

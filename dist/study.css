@@ -388,6 +388,57 @@ dialog p { font-size: 14px; color: var(--muted); margin: 16px 0; }
  .chapter-page-heading .heading-action { justify-content: flex-start; }
 }
 /* Existing chapter rows share the site's paper/ink controls. */
+.home-plan { margin-bottom: 32px; padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.optional-plan { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.optional-plan h2 { font-size: 16px; }
+.optional-plan p { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.optional-plan > button { flex-shrink: 0; }
+.plan-today-context { margin: 12px 0; color: var(--muted); font-size: 13px; }
+.plan-task { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.plan-task > div { flex: 1; min-width: 0; }
+.plan-task strong { font-size: 14px; font-weight: 500; }
+.plan-task p, .plan-unit p { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.plan-task button { flex-shrink: 0; }
+.plan-task button:disabled { background: var(--hover); color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+.plan-minutes { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.plan-check { color: var(--success); }
+.plan-complete { margin: 16px 0; color: var(--success); font-size: 14px; }
+.plan-empty { max-width: 640px; margin: 40px 0; }
+.plan-empty p { margin: 16px 0 24px; color: var(--muted); font-size: 14px; }
+.plan-form { max-width: 860px; margin-top: 24px; }
+.plan-form label { display: flex; flex-direction: column; gap: 8px; color: var(--ink); font-size: 13px; }
+.plan-form > label { margin-top: 24px; }
+.plan-form input:not([type="checkbox"]), .plan-form select { display: block; width: 100%; min-height: 44px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--surface); color: var(--ink); font-size: 16px; }
+.plan-form input[type="checkbox"] { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.plan-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; margin: 24px 0 16px; }
+.plan-template { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.plan-chapters { margin: 32px 0; padding: 24px 0 0; border: 0; border-top: 1px solid var(--line); }
+.plan-chapters legend { font-size: 18px; font-weight: 600; padding-right: 16px; }
+.plan-scope-actions { display: flex; gap: 24px; }
+.plan-chapter-subject { margin-top: 16px; }
+.plan-chapter-subject h2 { font-size: 15px; margin-bottom: 12px; }
+.plan-chapter-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+.plan-chapter-options label, .plan-form .plan-enabled { flex-direction: row; align-items: center; min-height: 44px; }
+.plan-chapter-options label { padding: 8px 0; border-bottom: 1px solid var(--line); }
+#plan-form-status { margin: 16px 0; color: var(--error); font-size: 13px; }
+.plan-timeline { margin-top: 40px; }
+.plan-phase { padding: 24px 0; border-bottom: 1px solid var(--line); }
+.plan-phase.current { padding-left: 16px; border-left: 2px solid var(--accent); }
+.plan-unit { display: flex; align-items: center; gap: 16px; padding: 12px 0; }
+.plan-unit > div { flex: 1; }
+.plan-unit strong { font-size: 14px; font-weight: 500; }
+.plan-unit button { flex-shrink: 0; }
+.plan-scope-note { margin: 16px 0; font-size: 13px; color: var(--muted); }
+.plan-scope-note button { margin-left: 16px; }
+@media (max-width: 680px) {
+ .optional-plan { align-items: flex-start; flex-direction: column; gap: 16px; }
+ .plan-task { flex-wrap: wrap; }
+ .plan-task > div { flex-basis: calc(100% - 96px); }
+ .plan-minutes { margin-left: auto; }
+ .plan-form-grid, .plan-chapter-options { grid-template-columns: minmax(0,1fr); gap: 16px; }
+ .plan-unit { flex-wrap: wrap; }
+ .plan-unit > div { flex-basis: 100%; }
+}
 .curriculum-tabs { display: flex; gap: 8px; margin: 24px 0 16px; }
 .curriculum-tabs button { padding: 12px 24px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .curriculum-tabs button.active { background: var(--ink); color: var(--surface); }
