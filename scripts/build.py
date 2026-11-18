@@ -2,6 +2,7 @@
 from pathlib import Path
 import re, json, html, hashlib
 from html.parser import HTMLParser
+from curriculum import apply as apply_curriculum
 
 ROOT=Path(__file__).resolve().parents[1]
 EXPLANATIONS=json.loads((ROOT/'content/explanations.json').read_text())
@@ -165,6 +166,7 @@ def build():
             q.update(explanation=other['explanation'].translate(translation),explanationOrigin='학습용 자체 해설 (동일 문항 연결)',explanationStatus='matched',explanationSourceId=other['id'])
             break
     (ROOT/'dist').mkdir(exist_ok=True)
+    apply_curriculum(questions,ROOT)
     (ROOT/'dist/questions.json').write_text(json.dumps(questions,ensure_ascii=False))
     (ROOT/'dist/import-report.json').write_text(json.dumps({'total':len(questions),'available':sum(s['available'] for s in sessions),'sessions':sessions,'issues':report,'explanations':{'available':sum(bool(q.get('explanation')) for q in questions),'pending':sum(not q.get('explanation') for q in questions)}},ensure_ascii=False,indent=2))
     print('총 문항:',len(questions),'원문 확인 필요:',len(report),'해설 연결:',sum(bool(q.get('explanation')) for q in questions))
